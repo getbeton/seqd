@@ -1,0 +1,90 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Plus } from "lucide-react";
+
+export default function CampaignsPage() {
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/campaigns")
+      .then((r) => r.json())
+      .then((data) => {
+        setCampaigns(Array.isArray(data) ? data : []);
+        setLoading(false);
+      });
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Campaigns</h1>
+        <Link href="/campaigns/new">
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            New Campaign
+          </Button>
+        </Link>
+      </div>
+
+      {loading ? (
+        <div className="text-zinc-500">Loading...</div>
+      ) : campaigns.length === 0 ? (
+        <div className="py-12 text-center text-zinc-500">
+          No campaigns yet. Create your first one to get started.
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Timezone</TableHead>
+              <TableHead>Window</TableHead>
+              <TableHead>Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {campaigns.map((campaign) => (
+              <TableRow key={campaign.id}>
+                <TableCell>
+                  <Link
+                    href={`/campaigns/${campaign.id}`}
+                    className="font-medium text-blue-600 hover:underline"
+                  >
+                    {campaign.name}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={
+                      campaign.status === "active"
+                        ? "default"
+                        : campaign.status === "paused"
+                        ? "secondary"
+                        : "outline"
+                    }
+                  >
+                    {campaign.status}
+                  </Badge>
+                </TableCell>
+                <TableCell>{campaign.timezone}</TableCell>
+                <TableCell>
+                  {campaign.sendingWindowStart}–{campaign.sendingWindowEnd}
+                </TableCell>
+                <TableCell>
+                  {new Date(campaign.createdAt).toLocaleDateString()}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
