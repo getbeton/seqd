@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: seqd
+      POSTGRES_USER: seqd
+      POSTGRES_PASSWORD: seqd
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seqd"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file: .env.local
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  cron:
+    image: alpine:3.19
+    depends_on:
+      web:
+        condition: service_started
+    environment:
+      CRON_SECRET: ${CRON_SECRET:-dev-cron-secret}
+      APP_URL: http://web:3000
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache curl
+        echo "* * * * * curl -s -X POST -H 'Authorization: Bearer '$$CRON_SECRET $$APP_URL/api/cron/send" >> /etc/crontabs/root
+        echo "0 */4 * * * curl -s -X POST -H 'Authorization: Bearer '$$CRON_SECRET $$APP_URL/api/cron/poll-replies" >> /etc/crontabs/root
+        crond -f -l 2
+
+volumes:
+  postgres_data:
