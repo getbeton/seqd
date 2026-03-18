@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# seqd — Personal Email Sequencer
 
-## Getting Started
+Self-hosted, open-source email sequencer for personal and small-team cold outbound. Replaces Apollo/Instantly/Smartlead.
 
-First, run the development server:
+## Quick Start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/getbeton/seqd
+cd seqd
+cp .env.example .env.local
+# Edit .env.local with your credentials
+
+# Start database + redis
+docker compose up -d db redis
+
+# Push schema to database
+DATABASE_URL=postgresql://seqd:seqd@localhost:5432/seqd npm run db:push
+
+# Seed defaults (creates workspace + contact stages)
+npm run dev &
+curl -X POST http://localhost:3000/api/setup
+
+# Open http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Next.js 15** (App Router) — API routes + UI in one codebase
+- **Drizzle ORM** + PostgreSQL
+- **BetterAuth** — email/password authentication
+- **shadcn/ui** + Tailwind CSS
+- **Docker Compose** — db, redis, web, cron
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Features
 
-## Learn More
+- Gmail OAuth mailbox management (unlimited mailboxes)
+- Multi-step email sequences with spintax + variable templates
+- Smart capacity-aware scheduler with future slot reservation
+- Reply detection via Gmail API polling
+- CC/BCC per email step (for CRM passthrough like Attio)
+- REST API for all data
+- Webhooks for events (send, reply, bounce)
+- Web UI with campaign management, contact import, reply feed
+- CLI for automation (`seqd run`, `seqd contacts import`, etc.)
 
-To learn more about Next.js, take a look at the following resources:
+## Environment Variables
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+See `.env.example` for all required variables. Key ones:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_URL` | Redis connection string |
+| `GOOGLE_OAUTH_CLIENT_ID` | GCP OAuth2 Desktop App client ID |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | GCP OAuth2 client secret |
+| `TOKEN_ENCRYPTION_KEY` | 32-byte hex key for encrypting Gmail tokens |
+| `BETTER_AUTH_SECRET` | Secret for BetterAuth session signing |
+| `CRON_SECRET` | Secret for protecting cron endpoints |
 
-## Deploy on Vercel
+## CLI
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+# Run via npm
+npm run cli -- mailbox list
+npm run cli -- campaign list
+npm run cli -- contacts import leads.csv --campaign <id>
+npm run cli -- run --dry-run
+npm run cli -- capacity
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Docker Compose (Full Stack)
+
+```bash
+docker compose up
+```
+
+Starts: PostgreSQL, Redis, Next.js app, and cron scheduler.
+
+## License
+
+MIT
