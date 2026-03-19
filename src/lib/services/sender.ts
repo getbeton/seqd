@@ -6,11 +6,15 @@ import {
   steps,
   contacts,
   mailboxes,
+  workspaceSettings,
 } from "@/lib/db/schema";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { getGmailService } from "@/lib/gmail/client";
 import { sendGmailMessage } from "@/lib/gmail/send";
 import { renderTemplate, buildContactVariables } from "@/lib/services/renderer";
+import { injectTrackingPixel, buildUnsubscribeFooter } from "@/lib/tracking/pixel";
+import { rewriteLinksForTracking } from "@/lib/tracking/links";
+import { generateUnsubscribeToken } from "@/lib/tracking/tokens";
 
 interface SendResult {
   sent: number;
@@ -23,6 +27,41 @@ interface SendResult {
     status: "sent" | "failed" | "skipped";
     error?: string;
   }>;
+}
+
+/**
+ * Get the tracking base URL for a workspace.
+ * Uses custom tracking domain if verified, otherwise falls back to app URL.
+ */
+async function getTrackingBaseUrl(workspaceId: string): Promise<{
+  baseUrl: string;
+  openTracking: boolean;
+  clickTracking: boolean;
+  unsubscribeEnabled: boolean;
+}> {
+  const [settings] = await db
+    .select()
+    .from(workspaceSettings)
+    .where(eq(workspaceSettings.workspaceId, workspaceId))
+    .limit(1);
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  if (settings?.trackingDomain && settings.trackingDomainVerified) {
+    return {
+      baseUrl: `https://${settings.trackingDomain}`,
+      openTracking: settings.openTrackingEnabled,
+      clickTracking: settings.clickTrackingEnabled,
+      unsubscribeEnabled: settings.unsubscribeLinkEnabled,
+    };
+  }
+
+  return {
+    baseUrl: appUrl,
+    openTracking: settings?.openTrackingEnabled ?? true,
+    clickTracking: settings?.clickTrackingEnabled ?? true,
+    unsubscribeEnabled: settings?.unsubscribeLinkEnabled ?? true,
+  };
 }
 
 /**
@@ -94,9 +133,51 @@ export async function runSendCycle(dryRun = false): Promise<SendResult> {
       const renderedSubject = step.subject
         ? renderTemplate(step.subject, variables, seed)
         : "(no subject)";
-      const renderedBody = step.bodyTemplate
+      let renderedBody = step.bodyTemplate
         ? renderTemplate(step.bodyTemplate, variables, seed)
         : "";
+
+      // 1. Create emailsSent record FIRST with status "pending" (need ID for tracking URLs)
+      const [emailSent] = await db.insert(emailsSent).values({
+        enrollmentId: enrollment.id,
+        stepId: step.id,
+        plannedSendId: plannedSend.id,
+        mailboxId: mailbox.id,
+        renderedSubject,
+        renderedBody,
+        status: "pending",
+      }).returning();
+
+      // Get tracking settings
+      const tracking = await getTrackingBaseUrl(enrollment.workspaceId);
+
+      // 2. Inject tracking pixel
+      if (tracking.openTracking) {
+        renderedBody = injectTrackingPixel(renderedBody, emailSent.id, tracking.baseUrl);
+      }
+
+      // 3. Rewrite links for click tracking
+      if (tracking.clickTracking) {
+        renderedBody = rewriteLinksForTracking(renderedBody, emailSent.id, tracking.baseUrl);
+      }
+
+      // 4. Build custom headers and unsubscribe footer
+      const customHeaders: Record<string, string> = {};
+      if (tracking.unsubscribeEnabled) {
+        const unsubToken = generateUnsubscribeToken({
+          emailSentId: emailSent.id,
+          contactId: contact.id,
+          enrollmentId: enrollment.id,
+        });
+        const unsubUrl = `${tracking.baseUrl}/unsub/${unsubToken}`;
+
+        // RFC 8058 headers
+        customHeaders["List-Unsubscribe"] = `<${unsubUrl}>`;
+        customHeaders["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+
+        // Append unsubscribe footer
+        renderedBody += buildUnsubscribeFooter(unsubUrl);
+      }
 
       // Find prior thread if reply mode
       let threadId: string | null = null;
@@ -107,13 +188,13 @@ export async function runSendCycle(dryRun = false): Promise<SendResult> {
           .from(emailsSent)
           .where(eq(emailsSent.enrollmentId, enrollment.id))
           .orderBy(emailsSent.sentAt);
-        if (prior) {
+        if (prior && prior.id !== emailSent.id) {
           threadId = prior.gmailThreadId;
           inReplyTo = prior.gmailMessageId;
         }
       }
 
-      // Send via Gmail
+      // 5. Send via Gmail
       const gmail = await getGmailService(mailbox.refreshToken);
       const gmailResult = await sendGmailMessage(gmail, {
         to: contact.email,
@@ -123,19 +204,20 @@ export async function runSendCycle(dryRun = false): Promise<SendResult> {
         bcc: (step.bccRecipients as string[]) || [],
         threadId,
         inReplyTo,
+        customHeaders,
       });
 
-      // Record sent email
-      await db.insert(emailsSent).values({
-        enrollmentId: enrollment.id,
-        stepId: step.id,
-        plannedSendId: plannedSend.id,
-        mailboxId: mailbox.id,
-        gmailMessageId: gmailResult.id,
-        gmailThreadId: gmailResult.threadId,
-        renderedSubject,
-        renderedBody,
-      });
+      // 6. Update emailsSent with Gmail message/thread IDs and status "sent"
+      await db
+        .update(emailsSent)
+        .set({
+          gmailMessageId: gmailResult.id,
+          gmailThreadId: gmailResult.threadId,
+          renderedBody, // Store the body with tracking injected
+          status: "sent",
+          sentAt: new Date(),
+        })
+        .where(eq(emailsSent.id, emailSent.id));
 
       // Update planned_send status
       await db

@@ -273,6 +273,7 @@ export const emailEvents = pgTable(
       .notNull()
       .references(() => enrollments.id),
     eventType: text("event_type").notNull(), // reply | bounce | open | click
+    clickedUrl: text("clicked_url"),
     replyText: text("reply_text"),
     replyGmailMessageId: text("reply_gmail_message_id"),
     occurredAt: timestamp("occurred_at").defaultNow().notNull(),
@@ -293,6 +294,22 @@ export const webhookConfigs = pgTable("webhook_configs", {
   url: text("url").notNull(),
   events: jsonb("events").default([]).$type<string[]>(),
   isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Workspace Settings ──────────────────────────────────────────────────
+
+export const workspaceSettings = pgTable("workspace_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id)
+    .unique(),
+  trackingDomain: text("tracking_domain"),
+  trackingDomainVerified: boolean("tracking_domain_verified").default(false).notNull(),
+  openTrackingEnabled: boolean("open_tracking_enabled").default(true).notNull(),
+  clickTrackingEnabled: boolean("click_tracking_enabled").default(true).notNull(),
+  unsubscribeLinkEnabled: boolean("unsubscribe_link_enabled").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

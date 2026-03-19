@@ -51,8 +51,8 @@ See `.env.example` for all required variables. Key ones:
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `REDIS_URL` | Redis connection string |
-| `GOOGLE_OAUTH_CLIENT_ID` | GCP OAuth2 Desktop App client ID |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | GCP OAuth2 client secret |
+| `GOOGLE_OAUTH_CLIENT_ID` | GCP OAuth2 Web Application client ID |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | GCP OAuth2 Web Application client secret |
 | `TOKEN_ENCRYPTION_KEY` | 32-byte hex key for encrypting Gmail tokens |
 | `BETTER_AUTH_SECRET` | Secret for BetterAuth session signing |
 | `CRON_SECRET` | Secret for protecting cron endpoints |

@@ -14,10 +14,9 @@ export async function sendGmailMessage(
     bcc?: string[];
     threadId?: string | null;
     inReplyTo?: string | null;
+    customHeaders?: Record<string, string>;
   }
 ): Promise<{ id: string; threadId: string }> {
-  const boundary = "seqd_boundary_" + Date.now();
-
   // Build RFC 2822 message
   const headers = [
     `To: ${params.to}`,
@@ -35,6 +34,13 @@ export async function sendGmailMessage(
   if (params.inReplyTo) {
     headers.push(`In-Reply-To: ${params.inReplyTo}`);
     headers.push(`References: ${params.inReplyTo}`);
+  }
+
+  // Add custom headers (e.g. List-Unsubscribe, List-Unsubscribe-Post)
+  if (params.customHeaders) {
+    for (const [key, value] of Object.entries(params.customHeaders)) {
+      headers.push(`${key}: ${value}`);
+    }
   }
 
   const rawMessage = headers.join("\r\n") + "\r\n\r\n" + params.body;

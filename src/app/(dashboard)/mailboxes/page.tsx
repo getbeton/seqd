@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { toast } from "sonner";
 export default function MailboxesPage() {
   const [mailboxes, setMailboxes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
 
   async function loadMailboxes() {
     const res = await fetch("/api/mailboxes");
@@ -23,6 +25,18 @@ export default function MailboxesPage() {
   useEffect(() => {
     loadMailboxes();
   }, []);
+
+  useEffect(() => {
+    const error = searchParams.get("error");
+    const success = searchParams.get("success");
+    if (error) {
+      toast.error(`Mailbox OAuth failed: ${decodeURIComponent(error)}`);
+      window.history.replaceState({}, "", "/mailboxes");
+    } else if (success === "true") {
+      toast.success("Mailbox connected successfully!");
+      window.history.replaceState({}, "", "/mailboxes");
+    }
+  }, [searchParams]);
 
   async function handleAddMailbox() {
     const res = await fetch("/api/mailboxes/auth/start", { method: "POST" });

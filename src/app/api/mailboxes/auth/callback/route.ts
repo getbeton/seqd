@@ -6,13 +6,22 @@ import { mailboxes } from "@/lib/db/schema";
 import { google } from "googleapis";
 
 export async function GET(request: NextRequest) {
+  // Check for error param from Google (e.g. ?error=access_denied)
+  const googleError = request.nextUrl.searchParams.get("error");
+  if (googleError) {
+    const description = request.nextUrl.searchParams.get("error_description") || googleError;
+    console.error("Google OAuth error:", googleError, description);
+    return NextResponse.redirect(
+      new URL(`/mailboxes?error=${encodeURIComponent(description)}`, request.url)
+    );
+  }
+
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
 
   if (!code || !state) {
-    return NextResponse.json(
-      { error: "Missing code or state" },
-      { status: 400 }
+    return NextResponse.redirect(
+      new URL("/mailboxes?error=" + encodeURIComponent("Missing code or state parameter"), request.url)
     );
   }
 
@@ -24,9 +33,8 @@ export async function GET(request: NextRequest) {
     const tokens = await exchangeCode(code);
 
     if (!tokens.refresh_token) {
-      return NextResponse.json(
-        { error: "No refresh token received. Try revoking access and reconnecting." },
-        { status: 400 }
+      return NextResponse.redirect(
+        new URL("/mailboxes?error=" + encodeURIComponent("No refresh token received. Try revoking access at myaccount.google.com/permissions and reconnecting."), request.url)
       );
     }
 
@@ -55,10 +63,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(
       new URL("/mailboxes?success=true", request.url)
     );
-  } catch (error) {
-    console.error("OAuth callback error:", error);
+  } catch (error: any) {
+    console.error("OAuth callback error:", error?.message, error?.stack);
+    const reason = error?.message || "oauth_failed";
     return NextResponse.redirect(
-      new URL("/mailboxes?error=oauth_failed", request.url)
+      new URL(`/mailboxes?error=${encodeURIComponent(reason)}`, request.url)
     );
   }
 }
