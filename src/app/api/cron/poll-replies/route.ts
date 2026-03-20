@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyCronAuth } from "@/lib/cron-auth";
 import { runReplyPolling } from "@/lib/services/reply-poller";
 
-export async function POST(request: NextRequest) {
+async function handler(request: NextRequest) {
   if (!verifyCronAuth(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -18,3 +18,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = handler;
+export const POST = handler;

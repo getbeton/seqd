@@ -54,8 +54,12 @@ export default function EnrollPage() {
       body: JSON.stringify({ contact_ids: Array.from(selected) }),
     });
     const data = await res.json();
-    setResult(data);
     setEnrolling(false);
+    if (!res.ok) {
+      toast.error(data.error || "Enrollment failed");
+      return;
+    }
+    setResult(data);
     if (data.enrolled > 0) {
       toast.success(`Enrolled ${data.enrolled} contacts`);
     }

@@ -52,8 +52,11 @@ export async function enrollContacts(
     .select()
     .from(campaigns)
     .where(eq(campaigns.id, campaignId));
-  if (!campaign || campaign.status !== "active") {
-    throw new Error("Campaign not found or not active");
+  if (!campaign) {
+    throw new Error("Campaign not found");
+  }
+  if (campaign.status === "completed") {
+    throw new Error("Cannot enroll contacts in a completed campaign");
   }
 
   const campaignSteps = await db

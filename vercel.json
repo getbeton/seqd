@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/send",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/poll-replies",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
