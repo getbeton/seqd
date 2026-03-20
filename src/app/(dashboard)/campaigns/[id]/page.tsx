@@ -151,19 +151,19 @@ export default function CampaignDetailPage() {
               Activate
             </Button>
           )}
-          {campaign.status === "active" && (
-            <>
-              <Link href={`/campaigns/${id}/enroll`}>
-                <Button variant="outline">
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Enroll
-                </Button>
-              </Link>
-              <Button variant="outline" onClick={handlePause}>
-                <Pause className="mr-2 h-4 w-4" />
-                Pause
+          {["draft", "active", "paused"].includes(campaign.status) && (
+            <Link href={`/campaigns/${id}/enroll`}>
+              <Button variant="outline">
+                <UserPlus className="mr-2 h-4 w-4" />
+                Enroll Contacts
               </Button>
-            </>
+            </Link>
+          )}
+          {campaign.status === "active" && (
+            <Button variant="outline" onClick={handlePause}>
+              <Pause className="mr-2 h-4 w-4" />
+              Pause
+            </Button>
           )}
           {campaign.status === "paused" && (
             <Button onClick={handleResume}>
@@ -313,11 +313,9 @@ export default function CampaignDetailPage() {
           {enrollments.length === 0 ? (
             <div className="py-8 text-center text-zinc-500">
               No contacts enrolled yet.
-              {campaign.status === "active" && (
-                <Link href={`/campaigns/${id}/enroll`} className="ml-1 text-blue-600 hover:underline">
-                  Enroll contacts
-                </Link>
-              )}
+              <Link href={`/campaigns/${id}/enroll`} className="ml-1 text-blue-600 hover:underline">
+                Enroll contacts
+              </Link>
             </div>
           ) : (
             <Table>

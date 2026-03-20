@@ -5,6 +5,45 @@ import { requireSession, getWorkspaceId } from "@/lib/auth/session";
 import { eq } from "drizzle-orm";
 import dns from "dns/promises";
 
+/**
+ * Add domain to Vercel project via API.
+ * Requires VERCEL_TOKEN and VERCEL_PROJECT_ID env vars.
+ * Non-blocking — if it fails, domain is still marked verified (user can add manually).
+ */
+async function addDomainToVercel(domain: string): Promise<{ ok: boolean; error?: string }> {
+  const token = process.env.VERCEL_TOKEN;
+  const projectId = process.env.VERCEL_PROJECT_ID;
+  const teamId = process.env.VERCEL_TEAM_ID;
+
+  if (!token || !projectId) {
+    return { ok: false, error: "VERCEL_TOKEN or VERCEL_PROJECT_ID not configured" };
+  }
+
+  const url = new URL(`https://api.vercel.com/v10/projects/${projectId}/domains`);
+  if (teamId) url.searchParams.set("teamId", teamId);
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: domain }),
+  });
+
+  if (res.ok) {
+    return { ok: true };
+  }
+
+  const data = await res.json().catch(() => ({}));
+  // Domain already added is fine
+  if (data.error?.code === "domain_already_in_use" || data.error?.code === "domain_already_exists") {
+    return { ok: true };
+  }
+
+  return { ok: false, error: data.error?.message || `Vercel API ${res.status}` };
+}
+
 export async function POST(request: NextRequest) {
   try {
     await requireSession();
@@ -37,7 +76,15 @@ export async function POST(request: NextRequest) {
           .set({ trackingDomainVerified: true })
           .where(eq(workspaceSettings.id, settings.id));
 
-        return NextResponse.json({ verified: true, records });
+        // Auto-add domain to Vercel project (fire-and-forget friendly)
+        const vercelResult = await addDomainToVercel(domain);
+
+        return NextResponse.json({
+          verified: true,
+          records,
+          vercelAdded: vercelResult.ok,
+          vercelError: vercelResult.error,
+        });
       } else {
         return NextResponse.json({
           verified: false,
