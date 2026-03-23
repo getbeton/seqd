@@ -128,6 +128,23 @@ export const contacts = pgTable(
   ]
 );
 
+// ─── Experiments ─────────────────────────────────────────────────────────────
+
+export const experiments = pgTable(
+  "experiments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    status: text("status").default("active").notNull(), // active | paused | archived
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("experiments_workspace_idx").on(table.workspaceId)]
+);
+
 // ─── Campaigns ────────────────────────────────────────────────────────────────
 
 export const campaigns = pgTable("campaigns", {
@@ -200,6 +217,9 @@ export const enrollments = pgTable(
     finishedReason: text("finished_reason"), // completed | replied | manually_removed | unsubscribed
     finishedAt: timestamp("finished_at"),
     lastSentAt: timestamp("last_sent_at"),
+    experimentId: uuid("experiment_id").references(() => experiments.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
@@ -208,6 +228,7 @@ export const enrollments = pgTable(
       table.contactId
     ),
     index("enrollments_status_idx").on(table.status),
+    index("enrollments_experiment_idx").on(table.experimentId),
   ]
 );
 
