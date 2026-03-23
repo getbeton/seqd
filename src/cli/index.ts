@@ -65,7 +65,7 @@ mailbox
   .command("list")
   .description("List connected mailboxes")
   .action(async () => {
-    const data = await api("GET", "/api/mailboxes");
+    const data = await api("GET", "/api/mailboxes") as Array<Record<string, unknown>>;
     formatTable(data, ["email", "displayName", "dailyLimit", "isActive"]);
   });
 
@@ -73,7 +73,7 @@ mailbox
   .command("add")
   .description("Add a new Gmail mailbox via OAuth")
   .action(async () => {
-    const data = await api("POST", "/api/mailboxes/auth/start");
+    const data = await api("POST", "/api/mailboxes/auth/start") as Record<string, unknown>;
     console.log("Open this URL to authorize:\n");
     console.log(data.auth_url);
     console.log("\nWaiting for authorization... (check your browser)");
@@ -104,7 +104,7 @@ campaign
   .command("list")
   .description("List campaigns")
   .action(async () => {
-    const data = await api("GET", "/api/campaigns");
+    const data = await api("GET", "/api/campaigns") as Array<Record<string, unknown>>;
     formatTable(data, ["name", "status", "timezone"]);
   });
 
@@ -112,18 +112,18 @@ campaign
   .command("create <name>")
   .description("Create a new campaign")
   .action(async (name: string) => {
-    const data = await api("POST", "/api/campaigns", { name });
-    console.log(`Created campaign: ${data.name} (${data.id})`);
+    const data = await api("POST", "/api/campaigns", { name }) as Record<string, unknown>;
+    console.log(`Created campaign: ${data.name as string} (${data.id as string})`);
   });
 
 campaign
   .command("stats <id>")
   .description("Show campaign statistics")
   .action(async (id: string) => {
-    const data = await api("GET", `/api/campaigns/${id}/stats`);
+    const data = await api("GET", `/api/campaigns/${id}/stats`) as Record<string, unknown>;
     console.log("Contact Statuses:");
-    for (const [status, count] of Object.entries(data.contactStatuses || {})) {
-      console.log(`  ${status}: ${count}`);
+    for (const [status, count] of Object.entries((data.contactStatuses as Record<string, unknown>) || {})) {
+      console.log(`  ${status}: ${count as number}`);
     }
   });
 
@@ -172,8 +172,8 @@ contacts
       console.log(`Enrolling all contacts in campaign ${options.campaign}...`);
       const result = await api("POST", `/api/campaigns/${options.campaign}/enroll`, {
         all: true,
-      });
-      console.log(`Enrolled: ${result.enrolled}`);
+      }) as Record<string, unknown>;
+      console.log(`Enrolled: ${result.enrolled as number}`);
     }
   });
 
@@ -185,10 +185,10 @@ contacts
   .action(async (options: { campaign: string; all?: boolean }) => {
     const result = await api("POST", `/api/campaigns/${options.campaign}/enroll`, {
       all: options.all || false,
-    });
-    console.log(`Enrolled: ${result.enrolled}`);
+    }) as Record<string, unknown>;
+    console.log(`Enrolled: ${result.enrolled as number}`);
     if (result.skipped) {
-      const skips = Object.entries(result.skipped)
+      const skips = Object.entries(result.skipped as Record<string, unknown>)
         .filter(([, v]) => (v as number) > 0)
         .map(([k, v]) => `${k}: ${v}`)
         .join(", ");
@@ -205,10 +205,10 @@ program
     const path = options.dryRun
       ? "/api/scheduler/run?dry_run=true"
       : "/api/scheduler/run";
-    const data = await api("POST", path);
-    console.log(`Sent: ${data.sent}, Failed: ${data.failed}, Skipped: ${data.skipped}`);
-    if (data.details?.length > 0) {
-      formatTable(data.details, [
+    const data = await api("POST", path) as Record<string, unknown>;
+    console.log(`Sent: ${data.sent as number}, Failed: ${data.failed as number}, Skipped: ${data.skipped as number}`);
+    if ((data.details as unknown[] | undefined)?.length ?? 0 > 0) {
+      formatTable(data.details as Array<Record<string, unknown>>, [
         "contactEmail",
         "stepNumber",
         "status",
@@ -224,13 +224,13 @@ program
   .description("Show mailbox capacity")
   .action(async (options: { date?: string }) => {
     const params = options.date ? `?date=${options.date}` : "";
-    const data = await api("GET", `/api/capacity${params}`);
+    const data = await api("GET", `/api/capacity${params}`) as Array<Record<string, unknown>>;
     for (const day of data) {
-      console.log(`\n${day.date}:`);
-      for (const mb of day.mailboxes) {
-        const bar = "█".repeat(mb.reserved) + "░".repeat(mb.available);
+      console.log(`\n${day.date as string}:`);
+      for (const mb of day.mailboxes as Array<Record<string, unknown>>) {
+        const bar = "█".repeat(mb.reserved as number) + "░".repeat(mb.available as number);
         console.log(
-          `  ${mb.email}: ${bar} ${mb.reserved}/${mb.dailyLimit}`
+          `  ${mb.email as string}: ${bar} ${mb.reserved as number}/${mb.dailyLimit as number}`
         );
       }
     }
