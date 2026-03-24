@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { mailboxes, plannedSends } from "@/lib/db/schema";
+import { mailboxes, sequenceSteps } from "@/lib/db/schema";
 import { requireSession, getWorkspaceId } from "@/lib/auth/session";
 import { eq, and, sql, count } from "drizzle-orm";
 import { addDays, format } from "date-fns";
@@ -30,12 +30,12 @@ export async function GET(request: NextRequest) {
       for (const mailbox of activeMailboxes) {
         const [usage] = await db
           .select({ count: count() })
-          .from(plannedSends)
+          .from(sequenceSteps)
           .where(
             and(
-              eq(plannedSends.mailboxId, mailbox.id),
-              eq(plannedSends.scheduledDate, dateStr),
-              eq(plannedSends.status, "pending")
+              eq(sequenceSteps.mailboxId, mailbox.id),
+              sql`DATE(${sequenceSteps.scheduledAt}) = ${dateStr}::date`,
+              eq(sequenceSteps.status, "pending")
             )
           );
 

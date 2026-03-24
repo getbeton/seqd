@@ -13,13 +13,17 @@ import {
   Inbox,
   Settings,
   LogOut,
+  GitBranch,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/sequences", label: "Sequences", icon: GitBranch },
   { href: "/campaigns", label: "Campaigns", icon: Mail },
+  { href: "/templates", label: "Templates", icon: FileText },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/replies", label: "Replies", icon: MessageSquare },
   { href: "/mailboxes", label: "Mailboxes", icon: Inbox },

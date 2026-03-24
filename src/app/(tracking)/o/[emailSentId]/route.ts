@@ -35,9 +35,8 @@ export async function GET(
 }
 
 async function recordOpen(emailSentId: string) {
-  // Look up the emailsSent record to get enrollmentId
   const [sent] = await db
-    .select({ enrollmentId: emailsSent.enrollmentId })
+    .select({ sequenceId: emailsSent.sequenceId })
     .from(emailsSent)
     .where(eq(emailsSent.id, emailSentId))
     .limit(1);
@@ -46,7 +45,7 @@ async function recordOpen(emailSentId: string) {
 
   await db.insert(emailEvents).values({
     emailSentId,
-    enrollmentId: sent.enrollmentId,
+    sequenceId: sent.sequenceId,
     eventType: "open",
   });
 }

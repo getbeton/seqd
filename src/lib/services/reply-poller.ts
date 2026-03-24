@@ -1,10 +1,10 @@
 import { db } from "@/lib/db";
 import {
   emailsSent,
-  enrollments,
+  sequences,
   emailEvents,
   mailboxes,
-  plannedSends,
+  sequenceSteps,
 } from "@/lib/db/schema";
 import { eq, and, sql, gte, isNotNull } from "drizzle-orm";
 import { getGmailService } from "@/lib/gmail/client";
@@ -38,7 +38,6 @@ function extractEmailFromHeaders(
     (h) => h.name.toLowerCase() === headerName.toLowerCase()
   );
   if (!header) return "";
-  // Extract email from "Name <email@example.com>" format
   const match = header.value.match(/<([^>]+)>/);
   return (match ? match[1] : header.value).toLowerCase().trim();
 }
@@ -53,12 +52,11 @@ function extractBodyText(payload: any): string {
         return Buffer.from(part.body.data, "base64").toString("utf8");
       }
     }
-    // Fallback to HTML
     for (const part of payload.parts) {
       if (part.mimeType === "text/html" && part.body?.data) {
         return Buffer.from(part.body.data, "base64")
           .toString("utf8")
-          .replace(/<[^>]+>/g, ""); // strip HTML tags
+          .replace(/<[^>]+>/g, "");
       }
     }
   }
@@ -78,19 +76,19 @@ export async function runReplyPolling(): Promise<PollResult> {
   const result: PollResult = { checked: 0, repliesFound: 0, errors: 0 };
   const sixtyDaysAgo = subDays(new Date(), 60);
 
-  // Get all sent emails with active enrollments
+  // Get all sent emails with active sequences
   const sentEmails = await db
     .select({
       emailSent: emailsSent,
-      enrollment: enrollments,
+      sequence: sequences,
       mailbox: mailboxes,
     })
     .from(emailsSent)
-    .innerJoin(enrollments, eq(emailsSent.enrollmentId, enrollments.id))
+    .innerJoin(sequences, eq(emailsSent.sequenceId, sequences.id))
     .innerJoin(mailboxes, eq(emailsSent.mailboxId, mailboxes.id))
     .where(
       and(
-        sql`${enrollments.status} IN ('active', 'not_sent')`,
+        sql`${sequences.status} IN ('active')`,
         isNotNull(emailsSent.gmailThreadId),
         gte(emailsSent.sentAt, sixtyDaysAgo)
       )
@@ -99,7 +97,11 @@ export async function runReplyPolling(): Promise<PollResult> {
   // Group by mailbox
   const byMailbox = new Map<
     string,
-    Array<{ emailSent: typeof emailsSent.$inferSelect; enrollment: typeof enrollments.$inferSelect; mailbox: typeof mailboxes.$inferSelect }>
+    Array<{
+      emailSent: typeof emailsSent.$inferSelect;
+      sequence: typeof sequences.$inferSelect;
+      mailbox: typeof mailboxes.$inferSelect;
+    }>
   >();
 
   for (const row of sentEmails) {
@@ -122,7 +124,10 @@ export async function runReplyPolling(): Promise<PollResult> {
       // Deduplicate by thread_id
       const seenThreads = new Map<
         string,
-        { emailSent: typeof emailsSent.$inferSelect; enrollment: typeof enrollments.$inferSelect }
+        {
+          emailSent: typeof emailsSent.$inferSelect;
+          sequence: typeof sequences.$inferSelect;
+        }
       >();
 
       for (const item of items) {
@@ -130,14 +135,14 @@ export async function runReplyPolling(): Promise<PollResult> {
         if (tid && !seenThreads.has(tid)) {
           seenThreads.set(tid, {
             emailSent: item.emailSent,
-            enrollment: item.enrollment,
+            sequence: item.sequence,
           });
         }
       }
 
       // Rate limit: process up to 50 threads per mailbox per cycle
       let processed = 0;
-      for (const [threadId, { emailSent, enrollment }] of seenThreads) {
+      for (const [threadId, { emailSent, sequence }] of seenThreads) {
         if (processed >= 50) break;
 
         try {
@@ -172,41 +177,30 @@ export async function runReplyPolling(): Promise<PollResult> {
             // Record event
             await db.insert(emailEvents).values({
               emailSentId: emailSent.id,
-              enrollmentId: enrollment.id,
+              sequenceId: sequence.id,
               eventType: "reply",
               replyText: body,
               replyGmailMessageId: msgId,
             });
 
-            // Update enrollment
-            if (isOoo(body)) {
-              await db
-                .update(enrollments)
-                .set({
-                  status: "finished",
-                  finishedReason: "replied",
-                  finishedAt: new Date(),
-                })
-                .where(eq(enrollments.id, enrollment.id));
-            } else {
-              await db
-                .update(enrollments)
-                .set({
-                  status: "finished",
-                  finishedReason: "replied",
-                  finishedAt: new Date(),
-                })
-                .where(eq(enrollments.id, enrollment.id));
-            }
-
-            // Cancel future planned_sends
+            // Mark sequence as finished (replied)
             await db
-              .update(plannedSends)
+              .update(sequences)
+              .set({
+                status: "finished",
+                finishedReason: "replied",
+                finishedAt: new Date(),
+              })
+              .where(eq(sequences.id, sequence.id));
+
+            // Cancel future pending sequence steps
+            await db
+              .update(sequenceSteps)
               .set({ status: "cancelled" })
               .where(
                 and(
-                  eq(plannedSends.enrollmentId, enrollment.id),
-                  eq(plannedSends.status, "pending")
+                  eq(sequenceSteps.sequenceId, sequence.id),
+                  eq(sequenceSteps.status, "pending")
                 )
               );
 

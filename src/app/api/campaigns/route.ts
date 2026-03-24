@@ -1,21 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { campaigns, enrollments, plannedSends } from "@/lib/db/schema";
+import { campaigns, sequences } from "@/lib/db/schema";
 import { requireSession, getWorkspaceId } from "@/lib/auth/session";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, count, sql } from "drizzle-orm";
 
 export async function GET() {
   try {
     await requireSession();
     const workspaceId = await getWorkspaceId();
 
-    const result = await db
-      .select()
+    const rows = await db
+      .select({
+        campaign: campaigns,
+        sequenceCount: count(sequences.id),
+      })
       .from(campaigns)
+      .leftJoin(sequences, eq(sequences.campaignId, campaigns.id))
       .where(eq(campaigns.workspaceId, workspaceId))
+      .groupBy(campaigns.id)
       .orderBy(campaigns.createdAt);
 
-    return NextResponse.json(result);
+    return NextResponse.json(rows.map(({ campaign, sequenceCount }) => ({
+      ...campaign,
+      sequenceCount,
+    })));
   } catch (error: any) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -35,12 +43,8 @@ export async function POST(request: NextRequest) {
       .values({
         workspaceId,
         name: body.name,
-        sendingWindowStart: body.sendingWindowStart || "08:00",
-        sendingWindowEnd: body.sendingWindowEnd || "18:00",
-        timezone: body.timezone || "UTC",
-        skipWeekends: body.skipWeekends ?? true,
-        excludedContactStageIds: body.excludedContactStageIds || [],
-        eventToStageMapping: body.eventToStageMapping || {},
+        description: body.description ?? null,
+        status: "active",
       })
       .returning();
 

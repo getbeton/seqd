@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 export default function RepliesPage() {
   const [replies, setReplies] = useState<any[]>([]);
@@ -25,11 +26,11 @@ export default function RepliesPage() {
         <div className="text-zinc-500">Loading...</div>
       ) : replies.length === 0 ? (
         <div className="py-12 text-center text-zinc-500">
-          No replies received yet. Replies will appear here when contacts respond to your sequences.
+          No replies yet. They'll appear here when contacts respond to your sequences.
         </div>
       ) : (
         <div className="space-y-3">
-          {replies.map((reply) => (
+          {replies.map((reply: any) => (
             <Card key={reply.event.id}>
               <CardContent className="py-4">
                 <div className="flex items-start justify-between">
@@ -41,7 +42,11 @@ export default function RepliesPage() {
                       )}
                     </div>
                     <div className="mt-1 text-xs text-zinc-500">
-                      {reply.campaign.name}
+                      {reply.campaign?.name && (
+                        <Link href={`/campaigns/${reply.campaign.id}`} className="hover:underline">
+                          {reply.campaign.name}
+                        </Link>
+                      )}
                       {reply.step && ` · Step ${reply.step.stepNumber}`}
                       {" · "}
                       {new Date(reply.event.occurredAt).toLocaleString()}

@@ -78,4 +78,4 @@ Starts: PostgreSQL, Redis, Next.js app, and cron scheduler.
 
 ## License
 
-MIT
+[GNU Affero General Public License v3.0](LICENSE)

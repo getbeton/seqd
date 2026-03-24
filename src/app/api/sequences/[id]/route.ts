@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
-  enrollments,
+  sequences,
+  sequenceSteps,
   contacts,
   campaigns,
+  templates,
   experiments,
-  steps,
   emailsSent,
   emailEvents,
-  plannedSends,
 } from "@/lib/db/schema";
 import { requireSession, getWorkspaceId } from "@/lib/auth/session";
 import { eq, and, asc } from "drizzle-orm";
+import { computeSendTime } from "@/lib/services/sequence";
 
 export async function GET(
   request: NextRequest,
@@ -22,62 +23,59 @@ export async function GET(
     const workspaceId = await getWorkspaceId();
     const { id } = await params;
 
-    // Fetch enrollment with contact, campaign, experiment
     const [row] = await db
       .select({
-        enrollment: enrollments,
+        sequence: sequences,
         contact: contacts,
         campaign: {
           id: campaigns.id,
           name: campaigns.name,
+        },
+        template: {
+          id: templates.id,
+          name: templates.name,
         },
         experiment: {
           id: experiments.id,
           name: experiments.name,
         },
       })
-      .from(enrollments)
-      .innerJoin(contacts, eq(contacts.id, enrollments.contactId))
-      .innerJoin(campaigns, eq(campaigns.id, enrollments.campaignId))
-      .leftJoin(experiments, eq(experiments.id, enrollments.experimentId))
-      .where(and(eq(enrollments.id, id), eq(enrollments.workspaceId, workspaceId)));
+      .from(sequences)
+      .innerJoin(contacts, eq(contacts.id, sequences.contactId))
+      .leftJoin(campaigns, eq(campaigns.id, sequences.campaignId))
+      .leftJoin(templates, eq(templates.id, sequences.templateId))
+      .leftJoin(experiments, eq(experiments.id, sequences.experimentId))
+      .where(and(eq(sequences.id, id), eq(sequences.workspaceId, workspaceId)));
 
     if (!row) {
       return NextResponse.json({ error: "Sequence not found" }, { status: 404 });
     }
 
-    // Fetch all steps for this campaign
-    const campaignSteps = await db
+    // Fetch all steps for this sequence
+    const steps = await db
       .select()
-      .from(steps)
-      .where(eq(steps.campaignId, row.campaign.id))
-      .orderBy(asc(steps.stepNumber));
+      .from(sequenceSteps)
+      .where(eq(sequenceSteps.sequenceId, id))
+      .orderBy(asc(sequenceSteps.stepNumber));
 
-    // Fetch all emails sent for this enrollment
+    // Fetch all emails sent for this sequence
     const sentEmails = await db
       .select()
       .from(emailsSent)
-      .where(eq(emailsSent.enrollmentId, id))
+      .where(eq(emailsSent.sequenceId, id))
       .orderBy(asc(emailsSent.sentAt));
 
-    // Fetch all events for this enrollment
+    // Fetch all events for this sequence
     const events = await db
       .select()
       .from(emailEvents)
-      .where(eq(emailEvents.enrollmentId, id))
+      .where(eq(emailEvents.sequenceId, id))
       .orderBy(asc(emailEvents.occurredAt));
 
-    // Fetch pending planned sends
-    const pendingSends = await db
-      .select()
-      .from(plannedSends)
-      .where(and(eq(plannedSends.enrollmentId, id), eq(plannedSends.status, "pending")))
-      .orderBy(asc(plannedSends.scheduledAt));
-
-    // Build step timeline
+    // Map sent emails by sequenceStepId
     const sentByStep = new Map<string, typeof sentEmails[0]>();
     for (const sent of sentEmails) {
-      sentByStep.set(sent.stepId, sent);
+      sentByStep.set(sent.sequenceStepId, sent);
     }
 
     const eventsByEmailSent = new Map<string, typeof events>();
@@ -89,14 +87,8 @@ export async function GET(
       }
     }
 
-    const pendingByStep = new Map<string, typeof pendingSends[0]>();
-    for (const ps of pendingSends) {
-      pendingByStep.set(ps.stepId, ps);
-    }
-
-    const stepTimeline = campaignSteps.map((step) => {
+    const stepTimeline = steps.map((step) => {
       const sent = sentByStep.get(step.id);
-      const planned = pendingByStep.get(step.id);
 
       if (sent) {
         const stepEvents = (eventsByEmailSent.get(sent.id) ?? []).map((e) => ({
@@ -106,7 +98,7 @@ export async function GET(
         }));
         return {
           stepNumber: step.stepNumber,
-          subject: sent.renderedSubject ?? step.subject,
+          subject: sent.subject ?? step.subject,
           delayDays: step.delayDays,
           status: "sent" as const,
           sentAt: sent.sentAt,
@@ -115,15 +107,15 @@ export async function GET(
         };
       }
 
-      if (planned) {
+      if (step.status === "pending" && step.scheduledAt) {
         return {
           stepNumber: step.stepNumber,
           subject: step.subject ?? undefined,
           delayDays: step.delayDays,
           status: "scheduled" as const,
-          scheduledAt: planned.scheduledAt,
-          bodyPreview: step.bodyTemplate
-            ? step.bodyTemplate.slice(0, 100) + (step.bodyTemplate.length > 100 ? "..." : "")
+          scheduledAt: step.scheduledAt,
+          bodyPreview: step.body
+            ? step.body.slice(0, 100) + (step.body.length > 100 ? "..." : "")
             : undefined,
         };
       }
@@ -132,12 +124,12 @@ export async function GET(
         stepNumber: step.stepNumber,
         subject: step.subject ?? undefined,
         delayDays: step.delayDays,
-        status: "pending" as const,
+        status: step.status as "pending" | "skipped" | "cancelled" | "failed",
       };
     });
 
     return NextResponse.json({
-      id: row.enrollment.id,
+      id: row.sequence.id,
       contact: {
         email: row.contact.email,
         firstName: row.contact.firstName,
@@ -146,15 +138,14 @@ export async function GET(
         title: row.contact.title,
         status: row.contact.status,
       },
-      experiment: row.experiment?.id
-        ? { id: row.experiment.id, name: row.experiment.name }
-        : null,
-      template: { id: row.campaign.id, name: row.campaign.name },
-      status: row.enrollment.status,
-      currentStepNumber: row.enrollment.currentStepNumber,
+      campaign: row.campaign?.id ? { id: row.campaign.id, name: row.campaign.name } : null,
+      template: row.template?.id ? { id: row.template.id, name: row.template.name } : null,
+      experiment: row.experiment?.id ? { id: row.experiment.id, name: row.experiment.name } : null,
+      status: row.sequence.status,
       steps: stepTimeline,
-      pausedReason: row.enrollment.pausedReason,
-      createdAt: row.enrollment.createdAt,
+      pausedReason: row.sequence.pausedReason,
+      lastSentAt: row.sequence.lastSentAt,
+      createdAt: row.sequence.createdAt,
     });
   } catch (err: unknown) {
     const error = err as Error;
@@ -179,40 +170,16 @@ export async function PATCH(
     // Verify ownership
     const [existing] = await db
       .select()
-      .from(enrollments)
-      .where(and(eq(enrollments.id, id), eq(enrollments.workspaceId, workspaceId)));
+      .from(sequences)
+      .where(and(eq(sequences.id, id), eq(sequences.workspaceId, workspaceId)));
 
     if (!existing) {
       return NextResponse.json({ error: "Sequence not found" }, { status: 404 });
     }
 
-    // Handle experiment assignment
-    if (body.experiment_id !== undefined) {
-      // Validate experiment belongs to workspace
-      if (body.experiment_id !== null) {
-        const { experiments: expTable } = await import("@/lib/db/schema");
-        const [exp] = await db
-          .select()
-          .from(expTable)
-          .where(and(eq(expTable.id, body.experiment_id), eq(expTable.workspaceId, workspaceId)));
-        if (!exp) {
-          return NextResponse.json({ error: "Experiment not found" }, { status: 404 });
-        }
-      }
-
-      const [updated] = await db
-        .update(enrollments)
-        .set({ experimentId: body.experiment_id })
-        .where(eq(enrollments.id, id))
-        .returning();
-
-      return NextResponse.json(updated);
-    }
-
-    // Handle action
     const action = body.action as string | undefined;
     if (!action) {
-      return NextResponse.json({ error: "action or experiment_id required" }, { status: 400 });
+      return NextResponse.json({ error: "action is required" }, { status: 400 });
     }
 
     const validActions = ["pause", "resume", "skip", "send_now"];
@@ -221,91 +188,93 @@ export async function PATCH(
     }
 
     if (action === "pause") {
-      if (existing.status !== "active" && existing.status !== "not_sent") {
-        return NextResponse.json(
-          { error: "Sequence is not active" },
-          { status: 409 }
-        );
+      if (!["active", "not_sent"].includes(existing.status)) {
+        return NextResponse.json({ error: "Sequence is not active" }, { status: 409 });
       }
-      // Cancel pending sends
+      // Cancel pending steps
       await db
-        .update(plannedSends)
+        .update(sequenceSteps)
         .set({ status: "cancelled" })
-        .where(and(eq(plannedSends.enrollmentId, id), eq(plannedSends.status, "pending")));
+        .where(and(eq(sequenceSteps.sequenceId, id), eq(sequenceSteps.status, "pending")));
 
       const [updated] = await db
-        .update(enrollments)
+        .update(sequences)
         .set({ status: "paused", pausedReason: "manual", pausedAt: new Date() })
-        .where(eq(enrollments.id, id))
+        .where(eq(sequences.id, id))
         .returning();
       return NextResponse.json(updated);
     }
 
     if (action === "resume") {
       if (existing.status !== "paused") {
-        return NextResponse.json(
-          { error: "Sequence is not paused" },
-          { status: 409 }
-        );
+        return NextResponse.json({ error: "Sequence is not paused" }, { status: 409 });
       }
+
+      // Re-schedule cancelled steps from today
+      const cancelledSteps = await db
+        .select()
+        .from(sequenceSteps)
+        .where(and(eq(sequenceSteps.sequenceId, id), eq(sequenceSteps.status, "cancelled")))
+        .orderBy(asc(sequenceSteps.stepNumber));
+
+      const today = new Date();
+      for (let i = 0; i < cancelledSteps.length; i++) {
+        const step = cancelledSteps[i];
+        const newScheduledAt = computeSendTime(
+          today,
+          existing.sendingWindowStart,
+          existing.sendingWindowEnd,
+          i
+        );
+        await db
+          .update(sequenceSteps)
+          .set({ status: "pending", scheduledAt: newScheduledAt })
+          .where(eq(sequenceSteps.id, step.id));
+      }
+
       const [updated] = await db
-        .update(enrollments)
-        .set({
-          status: "active",
-          pausedReason: null,
-          pausedAt: null,
-          autoUnpauseAt: null,
-        })
-        .where(eq(enrollments.id, id))
+        .update(sequences)
+        .set({ status: "active", pausedReason: null, pausedAt: null })
+        .where(eq(sequences.id, id))
         .returning();
       return NextResponse.json(updated);
     }
 
     if (action === "skip") {
-      // Cancel the next pending send and advance step number
-      const [nextSend] = await db
+      // Mark the next pending step as skipped
+      const [nextStep] = await db
         .select()
-        .from(plannedSends)
-        .where(and(eq(plannedSends.enrollmentId, id), eq(plannedSends.status, "pending")))
-        .orderBy(asc(plannedSends.scheduledAt))
+        .from(sequenceSteps)
+        .where(and(eq(sequenceSteps.sequenceId, id), eq(sequenceSteps.status, "pending")))
+        .orderBy(asc(sequenceSteps.scheduledAt))
         .limit(1);
 
-      if (nextSend) {
+      if (nextStep) {
         await db
-          .update(plannedSends)
-          .set({ status: "cancelled" })
-          .where(eq(plannedSends.id, nextSend.id));
+          .update(sequenceSteps)
+          .set({ status: "skipped" })
+          .where(eq(sequenceSteps.id, nextStep.id));
       }
 
-      const [updated] = await db
-        .update(enrollments)
-        .set({ currentStepNumber: existing.currentStepNumber + 1 })
-        .where(eq(enrollments.id, id))
-        .returning();
-      return NextResponse.json(updated);
+      return NextResponse.json({ success: true, skippedStepId: nextStep?.id ?? null });
     }
 
     if (action === "send_now") {
-      // Move the next pending send to now
-      const [nextSend] = await db
+      const [nextStep] = await db
         .select()
-        .from(plannedSends)
-        .where(and(eq(plannedSends.enrollmentId, id), eq(plannedSends.status, "pending")))
-        .orderBy(asc(plannedSends.scheduledAt))
+        .from(sequenceSteps)
+        .where(and(eq(sequenceSteps.sequenceId, id), eq(sequenceSteps.status, "pending")))
+        .orderBy(asc(sequenceSteps.scheduledAt))
         .limit(1);
 
-      if (!nextSend) {
-        return NextResponse.json({ error: "No pending send to trigger" }, { status: 409 });
+      if (!nextStep) {
+        return NextResponse.json({ error: "No pending step to trigger" }, { status: 409 });
       }
 
-      const now = new Date();
       const [updated] = await db
-        .update(plannedSends)
-        .set({
-          scheduledAt: now,
-          scheduledDate: now.toISOString().split("T")[0],
-        })
-        .where(eq(plannedSends.id, nextSend.id))
+        .update(sequenceSteps)
+        .set({ scheduledAt: new Date() })
+        .where(eq(sequenceSteps.id, nextStep.id))
         .returning();
       return NextResponse.json(updated);
     }

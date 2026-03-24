@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyUnsubscribeToken } from "@/lib/tracking/tokens";
 import { db } from "@/lib/db";
-import { contacts, enrollments } from "@/lib/db/schema";
+import { contacts, sequences } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -105,15 +105,15 @@ export async function POST(
       })
       .where(eq(contacts.id, payload.contactId));
 
-    // Finish the enrollment
+    // Finish the sequence (enrollmentId field in token holds sequenceId)
     await db
-      .update(enrollments)
+      .update(sequences)
       .set({
         status: "finished",
         finishedReason: "unsubscribed",
         finishedAt: new Date(),
       })
-      .where(eq(enrollments.id, payload.enrollmentId));
+      .where(eq(sequences.id, payload.enrollmentId));
 
     return new NextResponse("Unsubscribed successfully", { status: 200 });
   } catch (error: any) {

@@ -8,6 +8,13 @@
       "when": 1773853533730,
       "tag": "0000_sparkling_santa_claus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1774282727173,
+      "tag": "0001_flaky_lizard",
+      "breakpoints": true
     }
   ]
 }

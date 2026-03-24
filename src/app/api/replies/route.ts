@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { emailEvents, emailsSent, enrollments, contacts, campaigns, steps } from "@/lib/db/schema";
+import { emailEvents, emailsSent, sequences, sequenceSteps, contacts, campaigns } from "@/lib/db/schema";
 import { requireSession, getWorkspaceId } from "@/lib/auth/session";
 import { eq, and, desc } from "drizzle-orm";
 
@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
 
     const conditions = [
       eq(emailEvents.eventType, "reply"),
-      eq(enrollments.workspaceId, workspaceId),
+      eq(sequences.workspaceId, workspaceId),
     ];
     if (campaignId) {
-      conditions.push(eq(enrollments.campaignId, campaignId));
+      conditions.push(eq(sequences.campaignId, campaignId));
     }
 
     const result = await db
@@ -35,15 +35,15 @@ export async function GET(request: NextRequest) {
           name: campaigns.name,
         },
         step: {
-          stepNumber: steps.stepNumber,
+          stepNumber: sequenceSteps.stepNumber,
         },
       })
       .from(emailEvents)
-      .innerJoin(enrollments, eq(emailEvents.enrollmentId, enrollments.id))
-      .innerJoin(contacts, eq(enrollments.contactId, contacts.id))
-      .innerJoin(campaigns, eq(enrollments.campaignId, campaigns.id))
+      .innerJoin(sequences, eq(emailEvents.sequenceId, sequences.id))
+      .innerJoin(contacts, eq(sequences.contactId, contacts.id))
+      .leftJoin(campaigns, eq(sequences.campaignId, campaigns.id))
       .leftJoin(emailsSent, eq(emailEvents.emailSentId, emailsSent.id))
-      .leftJoin(steps, eq(emailsSent.stepId, steps.id))
+      .leftJoin(sequenceSteps, eq(emailsSent.sequenceStepId, sequenceSteps.id))
       .where(and(...conditions))
       .orderBy(desc(emailEvents.occurredAt))
       .limit(limit)

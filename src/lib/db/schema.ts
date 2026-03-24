@@ -7,7 +7,6 @@ import {
   integer,
   jsonb,
   time,
-  date,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
@@ -145,165 +144,115 @@ export const experiments = pgTable(
   (table) => [index("experiments_workspace_idx").on(table.workspaceId)]
 );
 
-// ─── Campaigns ────────────────────────────────────────────────────────────────
+// ─── Templates ────────────────────────────────────────────────────────────────
 
-export const campaigns = pgTable("campaigns", {
+export const templates = pgTable("templates", {
   id: uuid("id").primaryKey().defaultRandom(),
-  workspaceId: uuid("workspace_id")
-    .notNull()
-    .references(() => workspaces.id),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   name: text("name").notNull(),
+  description: text("description"),
   sendingWindowStart: time("sending_window_start").default("08:00").notNull(),
   sendingWindowEnd: time("sending_window_end").default("18:00").notNull(),
   timezone: text("timezone").default("UTC").notNull(),
   skipWeekends: boolean("skip_weekends").default(true).notNull(),
-  status: text("status").default("draft").notNull(), // draft | active | paused | completed
-  excludedContactStageIds: jsonb("excluded_contact_stage_ids")
-    .default([])
-    .$type<string[]>(),
-  eventToStageMapping: jsonb("event_to_stage_mapping")
-    .default({})
-    .$type<Record<string, string>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// ─── Steps ────────────────────────────────────────────────────────────────────
+// ─── Template Steps ───────────────────────────────────────────────────────────
 
-export const steps = pgTable(
-  "steps",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    campaignId: uuid("campaign_id")
-      .notNull()
-      .references(() => campaigns.id, { onDelete: "cascade" }),
-    stepNumber: integer("step_number").notNull(),
-    stepType: text("step_type").default("email").notNull(), // email | manual_task
-    subject: text("subject"),
-    bodyTemplate: text("body_template"),
-    delayDays: integer("delay_days").default(0).notNull(),
-    isReplyThread: boolean("is_reply_thread").default(true).notNull(),
-    ccRecipients: jsonb("cc_recipients").default([]).$type<string[]>(),
-    bccRecipients: jsonb("bcc_recipients").default([]).$type<string[]>(),
-    abVariants: jsonb("ab_variants").$type<
-      Array<{ subject: string; bodyTemplate: string; weight: number }>
-    >(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => [
-    index("steps_campaign_idx").on(table.campaignId, table.stepNumber),
-  ]
-);
+export const templateSteps = pgTable("template_steps", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  templateId: uuid("template_id").notNull().references(() => templates.id, { onDelete: "cascade" }),
+  stepNumber: integer("step_number").notNull(),
+  subject: text("subject"),
+  bodyTemplate: text("body_template"),
+  delayDays: integer("delay_days").default(0).notNull(),
+  isReplyThread: boolean("is_reply_thread").default(true).notNull(),
+  ccRecipients: jsonb("cc_recipients").default([]).$type<string[]>(),
+  bccRecipients: jsonb("bcc_recipients").default([]).$type<string[]>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
-// ─── Enrollments ──────────────────────────────────────────────────────────────
+// ─── Campaigns ────────────────────────────────────────────────────────────────
 
-export const enrollments = pgTable(
-  "enrollments",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    campaignId: uuid("campaign_id")
-      .notNull()
-      .references(() => campaigns.id),
-    contactId: uuid("contact_id")
-      .notNull()
-      .references(() => contacts.id),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => workspaces.id),
-    status: text("status").default("not_sent").notNull(), // not_sent | active | paused | finished | bounced | failed
-    currentStepNumber: integer("current_step_number").default(0).notNull(),
-    pausedReason: text("paused_reason"), // manual | campaign_paused | ooo
-    pausedAt: timestamp("paused_at"),
-    autoUnpauseAt: date("auto_unpause_at"),
-    finishedReason: text("finished_reason"), // completed | replied | manually_removed | unsubscribed
-    finishedAt: timestamp("finished_at"),
-    lastSentAt: timestamp("last_sent_at"),
-    experimentId: uuid("experiment_id").references(() => experiments.id, {
-      onDelete: "set null",
-    }),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => [
-    uniqueIndex("enrollments_campaign_contact_idx").on(
-      table.campaignId,
-      table.contactId
-    ),
-    index("enrollments_status_idx").on(table.status),
-    index("enrollments_experiment_idx").on(table.experimentId),
-  ]
-);
+export const campaigns = pgTable("campaigns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status").default("active").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
-// ─── Planned Sends ────────────────────────────────────────────────────────────
+// ─── Sequences ────────────────────────────────────────────────────────────────
 
-export const plannedSends = pgTable(
-  "planned_sends",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    enrollmentId: uuid("enrollment_id")
-      .notNull()
-      .references(() => enrollments.id, { onDelete: "cascade" }),
-    stepId: uuid("step_id")
-      .notNull()
-      .references(() => steps.id),
-    mailboxId: uuid("mailbox_id")
-      .notNull()
-      .references(() => mailboxes.id),
-    scheduledDate: date("scheduled_date").notNull(),
-    scheduledAt: timestamp("scheduled_at").notNull(), // exact send time (within window + jitter)
-    status: text("status").default("pending").notNull(), // pending | sent | failed | cancelled
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => [
-    index("planned_sends_scheduled_idx").on(table.scheduledAt, table.status),
-    index("planned_sends_mailbox_date_idx").on(
-      table.mailboxId,
-      table.scheduledDate
-    ),
-  ]
-);
+export const sequences = pgTable("sequences", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  contactId: uuid("contact_id").notNull().references(() => contacts.id),
+  campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+  templateId: uuid("template_id").references(() => templates.id, { onDelete: "set null" }),
+  mailboxId: uuid("mailbox_id").references(() => mailboxes.id, { onDelete: "set null" }),
+  experimentId: uuid("experiment_id").references(() => experiments.id, { onDelete: "set null" }),
+  status: text("status").default("active").notNull(),
+  pausedReason: text("paused_reason"),
+  pausedAt: timestamp("paused_at"),
+  finishedReason: text("finished_reason"),
+  finishedAt: timestamp("finished_at"),
+  lastSentAt: timestamp("last_sent_at"),
+  sendingWindowStart: time("sending_window_start").default("08:00").notNull(),
+  sendingWindowEnd: time("sending_window_end").default("18:00").notNull(),
+  timezone: text("timezone").default("UTC").notNull(),
+  skipWeekends: boolean("skip_weekends").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Sequence Steps ───────────────────────────────────────────────────────────
+
+export const sequenceSteps = pgTable("sequence_steps", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sequenceId: uuid("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
+  stepNumber: integer("step_number").notNull(),
+  subject: text("subject"),
+  body: text("body"),
+  delayDays: integer("delay_days").default(0).notNull(),
+  isReplyThread: boolean("is_reply_thread").default(true).notNull(),
+  ccRecipients: jsonb("cc_recipients").default([]).$type<string[]>(),
+  bccRecipients: jsonb("bcc_recipients").default([]).$type<string[]>(),
+  mailboxId: uuid("mailbox_id").references(() => mailboxes.id, { onDelete: "set null" }),
+  scheduledAt: timestamp("scheduled_at"),
+  status: text("status").default("pending").notNull(),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 // ─── Emails Sent ──────────────────────────────────────────────────────────────
 
 export const emailsSent = pgTable("emails_sent", {
   id: uuid("id").primaryKey().defaultRandom(),
-  enrollmentId: uuid("enrollment_id")
-    .notNull()
-    .references(() => enrollments.id),
-  stepId: uuid("step_id")
-    .notNull()
-    .references(() => steps.id),
-  plannedSendId: uuid("planned_send_id").references(() => plannedSends.id),
-  mailboxId: uuid("mailbox_id")
-    .notNull()
-    .references(() => mailboxes.id),
+  sequenceId: uuid("sequence_id").notNull().references(() => sequences.id),
+  sequenceStepId: uuid("sequence_step_id").notNull().references(() => sequenceSteps.id),
+  mailboxId: uuid("mailbox_id").notNull().references(() => mailboxes.id),
   gmailMessageId: text("gmail_message_id"),
   gmailThreadId: text("gmail_thread_id"),
-  renderedSubject: text("rendered_subject"),
-  renderedBody: text("rendered_body"),
-  status: text("status").default("sent").notNull(), // sent | bounced
+  subject: text("subject"),
+  body: text("body"),
+  status: text("status").default("sent").notNull(),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
 });
 
 // ─── Email Events ─────────────────────────────────────────────────────────────
 
-export const emailEvents = pgTable(
-  "email_events",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    emailSentId: uuid("email_sent_id").references(() => emailsSent.id),
-    enrollmentId: uuid("enrollment_id")
-      .notNull()
-      .references(() => enrollments.id),
-    eventType: text("event_type").notNull(), // reply | bounce | open | click
-    clickedUrl: text("clicked_url"),
-    replyText: text("reply_text"),
-    replyGmailMessageId: text("reply_gmail_message_id"),
-    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
-  },
-  (table) => [
-    index("email_events_enrollment_idx").on(table.enrollmentId),
-    index("email_events_type_idx").on(table.eventType),
-  ]
-);
+export const emailEvents = pgTable("email_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  emailSentId: uuid("email_sent_id").references(() => emailsSent.id),
+  sequenceId: uuid("sequence_id").notNull().references(() => sequences.id),
+  eventType: text("event_type").notNull(),
+  clickedUrl: text("clicked_url"),
+  replyText: text("reply_text"),
+  replyGmailMessageId: text("reply_gmail_message_id"),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+});
 
 // ─── Webhook Configs ──────────────────────────────────────────────────────────
 

@@ -27,7 +27,7 @@ export async function GET(
 
 async function recordClick(emailSentId: string, clickedUrl: string) {
   const [sent] = await db
-    .select({ enrollmentId: emailsSent.enrollmentId })
+    .select({ sequenceId: emailsSent.sequenceId })
     .from(emailsSent)
     .where(eq(emailsSent.id, emailSentId))
     .limit(1);
@@ -36,7 +36,7 @@ async function recordClick(emailSentId: string, clickedUrl: string) {
 
   await db.insert(emailEvents).values({
     emailSentId,
-    enrollmentId: sent.enrollmentId,
+    sequenceId: sent.sequenceId,
     eventType: "click",
     clickedUrl,
   });

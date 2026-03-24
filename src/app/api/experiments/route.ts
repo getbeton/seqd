@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { experiments, enrollments } from "@/lib/db/schema";
+import { experiments, sequences } from "@/lib/db/schema";
 import { requireSession, getWorkspaceId } from "@/lib/auth/session";
 import { eq, sql, count } from "drizzle-orm";
 
@@ -17,12 +17,12 @@ export async function GET() {
         description: experiments.description,
         status: experiments.status,
         createdAt: experiments.createdAt,
-        sequenceCount: count(enrollments.id),
-        activeCount: sql<number>`count(case when ${enrollments.status} = 'active' then 1 end)::int`,
-        repliedCount: sql<number>`count(case when ${enrollments.finishedReason} = 'replied' then 1 end)::int`,
+        sequenceCount: count(sequences.id),
+        activeCount: sql<number>`count(case when ${sequences.status} = 'active' then 1 end)::int`,
+        repliedCount: sql<number>`count(case when ${sequences.finishedReason} = 'replied' then 1 end)::int`,
       })
       .from(experiments)
-      .leftJoin(enrollments, eq(enrollments.experimentId, experiments.id))
+      .leftJoin(sequences, eq(sequences.experimentId, experiments.id))
       .where(eq(experiments.workspaceId, workspaceId))
       .groupBy(experiments.id)
       .orderBy(experiments.createdAt);
