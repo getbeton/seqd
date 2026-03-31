@@ -181,6 +181,9 @@ export const campaigns = pgTable("campaigns", {
   name: text("name").notNull(),
   description: text("description"),
   status: text("status").default("active").notNull(),
+  /** "template" = reusable step blueprint; "custom" = one-off outreach batch (replaces experiments) */
+  type: text("type").default("custom").notNull(),
+  hypothesis: text("hypothesis"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -193,7 +196,6 @@ export const sequences = pgTable("sequences", {
   campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
   templateId: uuid("template_id").references(() => templates.id, { onDelete: "set null" }),
   mailboxId: uuid("mailbox_id").references(() => mailboxes.id, { onDelete: "set null" }),
-  experimentId: uuid("experiment_id").references(() => experiments.id, { onDelete: "set null" }),
   status: text("status").default("active").notNull(),
   pausedReason: text("paused_reason"),
   pausedAt: timestamp("paused_at"),

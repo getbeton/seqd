@@ -6,7 +6,6 @@ import {
   contacts,
   campaigns,
   templates,
-  experiments,
 } from "@/lib/db/schema";
 import { requireSession, getWorkspaceId } from "@/lib/auth/session";
 import { eq, and, count, sql, desc, asc } from "drizzle-orm";
@@ -40,16 +39,12 @@ export async function GET(request: NextRequest) {
           id: templates.id,
           name: templates.name,
         },
-        experiment: {
-          id: experiments.id,
-          name: experiments.name,
-        },
       })
       .from(sequences)
       .innerJoin(contacts, eq(contacts.id, sequences.contactId))
       .leftJoin(campaigns, eq(campaigns.id, sequences.campaignId))
       .leftJoin(templates, eq(templates.id, sequences.templateId))
-      .leftJoin(experiments, eq(experiments.id, sequences.experimentId))
+      
       .where(and(...conditions))
       .orderBy(desc(sequences.createdAt))
       .limit(perPage)
@@ -103,7 +98,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const result = rows.map(({ sequence, contact, campaign, template, experiment }) => ({
+    const result = rows.map(({ sequence, contact, campaign, template }) => ({
       id: sequence.id,
       contact: {
         email: contact.email,
@@ -114,7 +109,6 @@ export async function GET(request: NextRequest) {
       },
       campaign: campaign?.id ? { id: campaign.id, name: campaign.name } : null,
       template: template?.id ? { id: template.id, name: template.name } : null,
-      experiment: experiment?.id ? { id: experiment.id, name: experiment.name } : null,
       status: sequence.status,
       totalSteps: stepCountMap.get(sequence.id) ?? 0,
       lastSentAt: sequence.lastSentAt,
@@ -159,7 +153,6 @@ export async function POST(request: NextRequest) {
       sendingWindowEnd: body.sending_window_end,
       timezone: body.timezone,
       skipWeekends: body.skip_weekends,
-      experimentId: body.experiment_id,
     });
 
     return NextResponse.json(sequence, { status: 201 });

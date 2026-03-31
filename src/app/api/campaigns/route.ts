@@ -38,12 +38,17 @@ export async function POST(request: NextRequest) {
     const workspaceId = await getWorkspaceId();
     const body = await request.json();
 
+    const validTypes = ["template", "custom"];
+    const type = body.type && validTypes.includes(body.type) ? body.type : "custom";
+
     const [campaign] = await db
       .insert(campaigns)
       .values({
         workspaceId,
         name: body.name,
         description: body.description ?? null,
+        type,
+        hypothesis: body.hypothesis ?? null,
         status: "active",
       })
       .returning();
