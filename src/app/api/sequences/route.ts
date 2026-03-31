@@ -6,7 +6,6 @@ import {
   contacts,
   campaigns,
   templates,
-  experiments,
 } from "@/lib/db/schema";
 import { requireSession, getWorkspaceId } from "@/lib/auth/session";
 import { eq, and, count, sql, desc, asc } from "drizzle-orm";
@@ -99,7 +98,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const result = rows.map(({ sequence, contact, campaign, template, experiment }) => ({
+    const result = rows.map(({ sequence, contact, campaign, template }) => ({
       id: sequence.id,
       contact: {
         email: contact.email,
@@ -110,7 +109,6 @@ export async function GET(request: NextRequest) {
       },
       campaign: campaign?.id ? { id: campaign.id, name: campaign.name } : null,
       template: template?.id ? { id: template.id, name: template.name } : null,
-      experiment: experiment?.id ? { id: experiment.id, name: experiment.name } : null,
       status: sequence.status,
       totalSteps: stepCountMap.get(sequence.id) ?? 0,
       lastSentAt: sequence.lastSentAt,

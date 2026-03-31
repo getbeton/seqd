@@ -306,16 +306,16 @@ sequence
     const data = await api("GET", `/api/sequences${query}`) as Array<Record<string, unknown>>;
     const rows = data.map((s) => {
       const contact = s.contact as Record<string, unknown>;
-      const exp = s.experiment as Record<string, unknown> | null;
+      const campaign = s.campaign as Record<string, unknown> | null;
       return {
         contact: `${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim() || (contact.email as string),
         company: (contact.company as string | null) ?? "—",
-        experiment: exp ? (exp.name as string) : "—",
+        campaign: campaign ? (campaign.name as string) : "—",
         progress: `${s.currentStepNumber as number} / ${s.totalSteps as number}`,
         status: s.status as string,
       };
     });
-    formatTable(rows, ["contact", "company", "experiment", "progress", "status"]);
+    formatTable(rows, ["contact", "company", "campaign", "progress", "status"]);
   });
 
 sequence
@@ -324,12 +324,12 @@ sequence
   .action(async (id: string) => {
     const s = await api("GET", `/api/sequences/${id}`) as Record<string, unknown>;
     const contact = s.contact as Record<string, unknown>;
-    const exp = s.experiment as Record<string, unknown> | null;
+    const campaign = s.campaign as Record<string, unknown> | null;
     const template = s.template as Record<string, unknown>;
     console.log(`\n● ${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim());
     console.log(`  ${(contact.title as string | null) ?? ""} · ${(contact.company as string | null) ?? ""}`);
     console.log(`  ${contact.email as string}`);
-    console.log(`\n  Experiment: ${exp ? (exp.name as string) : "—"}`);
+    console.log(`\n  Campaign:   ${campaign ? (campaign.name as string) : "—"}`);
     console.log(`  Template:   ${template.name as string}`);
     console.log(`  Status:     ${s.status as string}`);
     console.log(`  Enrolled:   ${new Date(s.createdAt as string).toLocaleDateString()}`);
@@ -361,8 +361,7 @@ sequence
   .description("Create a new sequence (enroll contact in template)")
   .requiredOption("--contact <email>", "Contact email")
   .requiredOption("--template <id>", "Template (campaign) ID")
-  .option("--experiment <id>", "Experiment ID to assign")
-  .action(async (options: { contact: string; template: string; experiment?: string }) => {
+  .action(async (options: { contact: string; template: string }) => {
     // Find contact by email
     const contactsData = await api("GET", "/api/contacts") as Array<Record<string, unknown>>;
     const contact = contactsData.find(
@@ -377,21 +376,6 @@ sequence
       contactIds: [contact.id as string],
     }) as Record<string, unknown>;
     console.log(`Enrolled: ${result.enrolled as number}`);
-    // If experiment specified, find the enrollment and assign
-    if (options.experiment && (result.enrolled as number) > 0) {
-      // Get sequences for this contact
-      const seqs = await api("GET", `/api/sequences?contact_id=${contact.id as string}`) as Array<Record<string, unknown>>;
-      const seq = seqs.find((s) => {
-        const tmpl = s.template as Record<string, unknown>;
-        return tmpl.id === options.template;
-      });
-      if (seq) {
-        await api("PATCH", `/api/sequences/${seq.id as string}`, {
-          experiment_id: options.experiment,
-        });
-        console.log(`Assigned to experiment ${options.experiment}`);
-      }
-    }
   });
 
 sequence

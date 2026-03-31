@@ -6,7 +6,6 @@ import {
   contacts,
   campaigns,
   templates,
-  experiments,
   emailsSent,
   emailEvents,
 } from "@/lib/db/schema";
@@ -40,7 +39,6 @@ export async function GET(
       .innerJoin(contacts, eq(contacts.id, sequences.contactId))
       .leftJoin(campaigns, eq(campaigns.id, sequences.campaignId))
       .leftJoin(templates, eq(templates.id, sequences.templateId))
-      .leftJoin(eq(experiments.id, sequences.experimentId))
       .where(and(eq(sequences.id, id), eq(sequences.workspaceId, workspaceId)));
 
     if (!row) {
@@ -136,7 +134,6 @@ export async function GET(
       },
       campaign: row.campaign?.id ? { id: row.campaign.id, name: row.campaign.name } : null,
       template: row.template?.id ? { id: row.template.id, name: row.template.name } : null,
-      experiment: row.experiment?.id ? { id: row.experiment.id, name: row.experiment.name } : null,
       status: row.sequence.status,
       steps: stepTimeline,
       pausedReason: row.sequence.pausedReason,
