@@ -28,7 +28,6 @@ export interface CreateSequenceOptions {
   sendingWindowEnd?: string;
   timezone?: string;
   skipWeekends?: boolean;
-  experimentId?: string;
 }
 
 export async function createSequence(
@@ -156,7 +155,6 @@ export async function createSequence(
       campaignId: options.campaignId ?? null,
       templateId: options.templateId ?? null,
       mailboxId,
-      experimentId: options.experimentId ?? null,
       status: "active",
       sendingWindowStart,
       sendingWindowEnd,

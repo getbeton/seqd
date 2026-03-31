@@ -43,6 +43,7 @@ export default function CampaignsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Sequences</TableHead>
               <TableHead>Status</TableHead>
@@ -56,6 +57,11 @@ export default function CampaignsPage() {
                   <Link href={`/campaigns/${campaign.id}`} className="font-medium text-blue-600 hover:underline">
                     {campaign.name}
                   </Link>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={campaign.type === "template" ? "default" : "outline"}>
+                    {campaign.type === "template" ? "Template" : "Custom"}
+                  </Badge>
                 </TableCell>
                 <TableCell className="text-zinc-500">{campaign.description || "—"}</TableCell>
                 <TableCell>{campaign.sequenceCount ?? 0}</TableCell>

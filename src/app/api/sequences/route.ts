@@ -40,16 +40,12 @@ export async function GET(request: NextRequest) {
           id: templates.id,
           name: templates.name,
         },
-        experiment: {
-          id: experiments.id,
-          name: experiments.name,
-        },
       })
       .from(sequences)
       .innerJoin(contacts, eq(contacts.id, sequences.contactId))
       .leftJoin(campaigns, eq(campaigns.id, sequences.campaignId))
       .leftJoin(templates, eq(templates.id, sequences.templateId))
-      .leftJoin(experiments, eq(experiments.id, sequences.experimentId))
+      
       .where(and(...conditions))
       .orderBy(desc(sequences.createdAt))
       .limit(perPage)
@@ -159,7 +155,6 @@ export async function POST(request: NextRequest) {
       sendingWindowEnd: body.sending_window_end,
       timezone: body.timezone,
       skipWeekends: body.skip_weekends,
-      experimentId: body.experiment_id,
     });
 
     return NextResponse.json(sequence, { status: 201 });

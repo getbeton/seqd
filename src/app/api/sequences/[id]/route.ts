@@ -35,16 +35,12 @@ export async function GET(
           id: templates.id,
           name: templates.name,
         },
-        experiment: {
-          id: experiments.id,
-          name: experiments.name,
-        },
       })
       .from(sequences)
       .innerJoin(contacts, eq(contacts.id, sequences.contactId))
       .leftJoin(campaigns, eq(campaigns.id, sequences.campaignId))
       .leftJoin(templates, eq(templates.id, sequences.templateId))
-      .leftJoin(experiments, eq(experiments.id, sequences.experimentId))
+      .leftJoin(eq(experiments.id, sequences.experimentId))
       .where(and(eq(sequences.id, id), eq(sequences.workspaceId, workspaceId)));
 
     if (!row) {
