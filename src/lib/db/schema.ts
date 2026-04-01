@@ -8,7 +8,6 @@ import {
   jsonb,
   time,
   uniqueIndex,
-  index,
 } from "drizzle-orm/pg-core";
 
 // ─── Auth (BetterAuth) ────────────────────────────────────────────────────────
@@ -125,23 +124,6 @@ export const contacts = pgTable(
       table.email
     ),
   ]
-);
-
-// ─── Experiments ─────────────────────────────────────────────────────────────
-
-export const experiments = pgTable(
-  "experiments",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => workspaces.id),
-    name: text("name").notNull(),
-    description: text("description"),
-    status: text("status").default("active").notNull(), // active | paused | archived
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => [index("experiments_workspace_idx").on(table.workspaceId)]
 );
 
 // ─── Templates ────────────────────────────────────────────────────────────────
