@@ -31,6 +31,7 @@ export default function SettingsPage() {
   const [unsubscribeEnabled, setUnsubscribeEnabled] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [savingTracking, setSavingTracking] = useState(false);
+  const [cnameTarget, setCnameTarget] = useState("");
 
   async function loadWebhooks() {
     const res = await fetch("/api/webhooks");
@@ -46,6 +47,7 @@ export default function SettingsPage() {
     setOpenTracking(data.openTrackingEnabled ?? true);
     setClickTracking(data.clickTrackingEnabled ?? true);
     setUnsubscribeEnabled(data.unsubscribeLinkEnabled ?? true);
+    setCnameTarget(data.cnameTarget || "");
   }
 
   useEffect(() => {
@@ -179,7 +181,7 @@ export default function SettingsPage() {
               <p>1. Go to your DNS provider (Cloudflare, Route 53, etc.)</p>
               <p>2. Add a CNAME record:</p>
               <p className="font-mono ml-4">
-                {trackingDomain || "track.yourdomain.com"} → cname.vercel-dns.com
+                {trackingDomain || "track.yourdomain.com"} → <code className="select-all rounded bg-background px-1 py-0.5">{cnameTarget || "cname.vercel-dns.com"}</code>
               </p>
               <p>3. Wait for DNS propagation (up to 48h), then click Verify</p>
               <p>4. Vercel will automatically provision an SSL certificate</p>

@@ -5,10 +5,12 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, Search } from "lucide-react";
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,6 +21,10 @@ export default function CampaignsPage() {
         setLoading(false);
       });
   }, []);
+
+  const filteredCampaigns = campaigns.filter((c) =>
+    c.name?.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="space-y-4">
@@ -32,11 +38,23 @@ export default function CampaignsPage() {
         </Link>
       </div>
 
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search campaigns..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       {loading ? (
         <div className="text-zinc-500">Loading...</div>
-      ) : campaigns.length === 0 ? (
+      ) : filteredCampaigns.length === 0 ? (
         <div className="py-12 text-center text-zinc-500">
-          No campaigns yet. Campaigns group your sequences together.
+          {campaigns.length === 0
+            ? "No campaigns yet. Campaigns group your sequences together."
+            : "No campaigns match your search."}
         </div>
       ) : (
         <Table>
@@ -51,7 +69,7 @@ export default function CampaignsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {campaigns.map((campaign) => (
+            {filteredCampaigns.map((campaign) => (
               <TableRow key={campaign.id}>
                 <TableCell>
                   <Link href={`/campaigns/${campaign.id}`} className="font-medium text-blue-600 hover:underline">

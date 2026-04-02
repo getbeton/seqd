@@ -64,10 +64,15 @@ export async function POST(request: NextRequest) {
 
     const domain = settings.trackingDomain;
 
+    const base = process.env.TRACKING_CNAME_BASE;
+    const cnameTarget = base
+      ? `t-${require("crypto").createHash("sha256").update(settings.workspaceId).digest("hex").slice(0, 8)}.${base}`
+      : null;
+
     try {
       const records = await dns.resolveCname(domain);
       const isValid = records.some(
-        (r) => r === "cname.vercel-dns.com" || r.endsWith(".vercel-dns.com")
+        (r) => r === "cname.vercel-dns.com" || r.endsWith(".vercel-dns.com") || (cnameTarget && r === cnameTarget)
       );
 
       if (isValid) {
@@ -89,14 +94,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           verified: false,
           records,
-          error: `CNAME points to ${records.join(", ")} instead of cname.vercel-dns.com`,
+          error: `CNAME points to ${records.join(", ")} instead of ${cnameTarget || "cname.vercel-dns.com"}`,
         });
       }
     } catch (dnsError: any) {
       return NextResponse.json({
         verified: false,
         error: dnsError.code === "ENOTFOUND" || dnsError.code === "ENODATA"
-          ? "No CNAME record found. Please add a CNAME record pointing to cname.vercel-dns.com"
+          ? `No CNAME record found. Please add a CNAME record pointing to ${cnameTarget || "cname.vercel-dns.com"}`
           : `DNS lookup failed: ${dnsError.message}`,
       });
     }

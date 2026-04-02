@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, Search } from "lucide-react";
 
 const statusVariant: Record<string, any> = {
   active: "default",
@@ -16,6 +17,7 @@ const statusVariant: Record<string, any> = {
 
 export default function SequencesPage() {
   const [sequences, setSequences] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -45,6 +47,16 @@ export default function SequencesPage() {
         </Link>
       </div>
 
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search by name, email, or company..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       <div className="flex gap-2">
         {["", "active", "paused", "finished", "failed"].map((s) => (
           <Button key={s} size="sm" variant={statusFilter === s ? "default" : "outline"}
@@ -56,9 +68,20 @@ export default function SequencesPage() {
 
       {loading ? (
         <div className="text-zinc-500">Loading...</div>
-      ) : sequences.length === 0 ? (
-        <div className="py-12 text-center text-zinc-500">No sequences yet.</div>
-      ) : (
+      ) : (() => {
+        const q = search.toLowerCase();
+        const filtered = sequences.filter((seq: any) => {
+          if (!q) return true;
+          const name = `${seq.contact?.firstName ?? ""} ${seq.contact?.lastName ?? ""}`.toLowerCase();
+          const email = (seq.contact?.email ?? "").toLowerCase();
+          const company = (seq.contact?.company ?? "").toLowerCase();
+          return name.includes(q) || email.includes(q) || company.includes(q);
+        });
+        return filtered.length === 0 ? (
+          <div className="py-12 text-center text-zinc-500">
+            {sequences.length === 0 ? "No sequences yet." : "No sequences match your search."}
+          </div>
+        ) : (
         <Table>
           <TableHeader>
             <TableRow>
@@ -72,7 +95,7 @@ export default function SequencesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sequences.map((seq: any) => (
+            {filtered.map((seq: any) => (
               <TableRow key={seq.id}>
                 <TableCell>
                   <Link href={`/sequences/${seq.id}`} className="font-medium text-blue-600 hover:underline">
@@ -100,7 +123,8 @@ export default function SequencesPage() {
             ))}
           </TableBody>
         </Table>
-      )}
+        );
+      })()}
     </div>
   );
 }

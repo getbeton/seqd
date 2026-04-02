@@ -9,12 +9,21 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbSeparator,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb";
 
 export default function CreateSequencePage() {
   const { id: campaignId } = useParams<{ id: string }>();
   const router = useRouter();
   const [contacts, setContacts] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [campaignName, setCampaignName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -34,9 +43,11 @@ export default function CreateSequencePage() {
     Promise.all([
       fetch("/api/contacts?limit=200").then((r) => r.json()),
       fetch("/api/templates").then((r) => r.json()),
-    ]).then(([c, t]) => {
+      fetch(`/api/campaigns/${campaignId}`).then((r) => r.json()),
+    ]).then(([c, t, camp]) => {
       setContacts(c.data || []);
       setTemplates(Array.isArray(t) ? t : []);
+      setCampaignName(camp?.name || "Campaign");
       setLoading(false);
     });
   }, []);
@@ -89,6 +100,22 @@ export default function CreateSequencePage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink href="/campaigns">Campaigns</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink href={`/campaigns/${campaignId}`}>{campaignName}</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Add Sequence</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
       <h1 className="text-2xl font-bold">Create Sequence</h1>
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Contact */}

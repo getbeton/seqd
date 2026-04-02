@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { mailboxes } from "@/lib/db/schema";
+import { mailboxes, sequenceSteps } from "@/lib/db/schema";
 import { requireSession, getWorkspaceId } from "@/lib/auth/session";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 
 export async function PATCH(
   request: NextRequest,
@@ -46,6 +46,24 @@ export async function DELETE(
     const workspaceId = await getWorkspaceId();
     const { id } = await params;
 
+    // Count pending steps for this mailbox
+    const [pendingCount] = await db
+      .select({ count: count() })
+      .from(sequenceSteps)
+      .where(
+        and(eq(sequenceSteps.mailboxId, id), eq(sequenceSteps.status, "pending"))
+      );
+
+    // Cancel them
+    if (pendingCount.count > 0) {
+      await db
+        .update(sequenceSteps)
+        .set({ status: "cancelled" })
+        .where(
+          and(eq(sequenceSteps.mailboxId, id), eq(sequenceSteps.status, "pending"))
+        );
+    }
+
     const [deleted] = await db
       .delete(mailboxes)
       .where(and(eq(mailboxes.id, id), eq(mailboxes.workspaceId, workspaceId)))
@@ -54,7 +72,7 @@ export async function DELETE(
     if (!deleted) {
       return NextResponse.json({ error: "Mailbox not found" }, { status: 404 });
     }
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, cancelledSteps: pendingCount.count });
   } catch (error: any) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

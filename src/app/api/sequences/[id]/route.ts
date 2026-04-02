@@ -91,6 +91,7 @@ export async function GET(
           replyText: e.replyText ?? undefined,
         }));
         return {
+          id: step.id,
           stepNumber: step.stepNumber,
           subject: sent.subject ?? step.subject,
           delayDays: step.delayDays,
@@ -103,8 +104,10 @@ export async function GET(
 
       if (step.status === "pending" && step.scheduledAt) {
         return {
+          id: step.id,
           stepNumber: step.stepNumber,
           subject: step.subject ?? undefined,
+          body: step.body ?? undefined,
           delayDays: step.delayDays,
           status: "scheduled" as const,
           scheduledAt: step.scheduledAt,
@@ -115,8 +118,10 @@ export async function GET(
       }
 
       return {
+        id: step.id,
         stepNumber: step.stepNumber,
         subject: step.subject ?? undefined,
+        body: step.body ?? undefined,
         delayDays: step.delayDays,
         status: step.status as "pending" | "skipped" | "cancelled" | "failed",
       };
