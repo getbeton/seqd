@@ -79,6 +79,7 @@ export default function CampaignDetailPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Sequence</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Company</TableHead>
               <TableHead>Template</TableHead>
@@ -90,6 +91,11 @@ export default function CampaignDetailPage() {
           <TableBody>
             {sequences.map((seq: any) => (
               <TableRow key={seq.id}>
+                <TableCell>
+                  <Link href={`/sequences/${seq.id}`} className="font-medium text-blue-600 hover:underline">
+                    #{seq.id}
+                  </Link>
+                </TableCell>
                 <TableCell>
                   <Link href={`/sequences/${seq.id}`} className="font-medium text-blue-600 hover:underline">
                     {seq.contact?.firstName} {seq.contact?.lastName}

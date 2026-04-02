@@ -85,6 +85,7 @@ export default function SequencesPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Sequence</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Company</TableHead>
               <TableHead>Campaign</TableHead>
@@ -97,6 +98,11 @@ export default function SequencesPage() {
           <TableBody>
             {filtered.map((seq: any) => (
               <TableRow key={seq.id}>
+                <TableCell>
+                  <Link href={`/sequences/${seq.id}`} className="font-medium text-blue-600 hover:underline">
+                    #{seq.id}
+                  </Link>
+                </TableCell>
                 <TableCell>
                   <Link href={`/sequences/${seq.id}`} className="font-medium text-blue-600 hover:underline">
                     {seq.contact?.firstName} {seq.contact?.lastName}
