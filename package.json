@@ -2,6 +2,9 @@
   "name": "seqd",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "seqd": "./src/cli/index.ts"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
