@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
+import { ContactSheet } from "@/components/contact-sheet";
 
 const statusVariant: Record<string, any> = {
   active: "default",
@@ -20,6 +21,7 @@ export default function SequencesPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
 
   function load(status = "") {
     setLoading(true);
@@ -104,10 +106,20 @@ export default function SequencesPage() {
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <Link href={`/sequences/${seq.id}`} className="font-medium text-blue-600 hover:underline">
+                  <button
+                    onClick={() => setSelectedContactId(seq.contact?.id)}
+                    className="font-medium text-blue-600 hover:underline text-left"
+                  >
                     {seq.contact?.firstName} {seq.contact?.lastName}
-                  </Link>
-                  <div className="text-xs text-zinc-500">{seq.contact?.email}</div>
+                  </button>
+                  <div className="text-xs text-zinc-500">
+                    <button
+                      onClick={() => setSelectedContactId(seq.contact?.id)}
+                      className="hover:underline"
+                    >
+                      {seq.contact?.email}
+                    </button>
+                  </div>
                 </TableCell>
                 <TableCell>{seq.contact?.company || "—"}</TableCell>
                 <TableCell>
@@ -131,6 +143,11 @@ export default function SequencesPage() {
         </Table>
         );
       })()}
+
+      <ContactSheet
+        contactId={selectedContactId}
+        onClose={() => setSelectedContactId(null)}
+      />
     </div>
   );
 }

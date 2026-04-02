@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
     const result = rows.map(({ sequence, contact, campaign, template }) => ({
       id: sequence.id,
       contact: {
+        id: contact.id,
         email: contact.email,
         firstName: contact.firstName,
         lastName: contact.lastName,

@@ -16,12 +16,14 @@ import {
   BreadcrumbSeparator,
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
+import { ContactSheet } from "@/components/contact-sheet";
 
 export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [campaign, setCampaign] = useState<any>(null);
   const [sequences, setSequences] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -97,10 +99,20 @@ export default function CampaignDetailPage() {
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <Link href={`/sequences/${seq.id}`} className="font-medium text-blue-600 hover:underline">
+                  <button
+                    onClick={() => setSelectedContactId(seq.contact?.id)}
+                    className="font-medium text-blue-600 hover:underline text-left"
+                  >
                     {seq.contact?.firstName} {seq.contact?.lastName}
-                  </Link>
-                  <div className="text-xs text-zinc-500">{seq.contact?.email}</div>
+                  </button>
+                  <div className="text-xs text-zinc-500">
+                    <button
+                      onClick={() => setSelectedContactId(seq.contact?.id)}
+                      className="hover:underline"
+                    >
+                      {seq.contact?.email}
+                    </button>
+                  </div>
                 </TableCell>
                 <TableCell>{seq.contact?.company || "—"}</TableCell>
                 <TableCell>{seq.template?.name || <span className="text-zinc-400">manual</span>}</TableCell>
@@ -120,6 +132,11 @@ export default function CampaignDetailPage() {
           </TableBody>
         </Table>
       )}
+
+      <ContactSheet
+        contactId={selectedContactId}
+        onClose={() => setSelectedContactId(null)}
+      />
     </div>
   );
 }
