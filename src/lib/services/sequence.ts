@@ -164,27 +164,52 @@ export async function createSequence(
     .returning();
 
   // Schedule steps
+  // Step 1 is scheduled via slot-based logic (respects daily limits).
+  // Follow-up steps are pinned relative to step 1's actual send date.
   const startDate = new Date();
-  let cumulativeDelay = 0;
+  let step1Date: Date | null = null;
 
   for (const step of resolvedSteps) {
-    cumulativeDelay += step.delayDays;
-    let targetDate = addDays(startDate, cumulativeDelay);
+    let scheduledAt: Date;
 
-    if (skipWeekends) {
-      while (isWeekend(targetDate)) {
-        targetDate = addDays(targetDate, 1);
+    if (step.stepNumber === 1) {
+      // Find the next available slot on or after today
+      const slot = await findNextAvailableSlot(
+        mailboxId,
+        mailbox.dailyLimit,
+        startDate,
+        skipWeekends
+      );
+      scheduledAt = computeSendTime(
+        slot.date,
+        sendingWindowStart,
+        sendingWindowEnd,
+        slot.slotIndex
+      );
+      step1Date = slot.date;
+    } else {
+      // Cascade from step 1's actual date, not the creation timestamp
+      if (!step1Date) throw new Error("step1Date not set before follow-up step");
+
+      let targetDate = addDays(step1Date, step.delayDays);
+
+      if (skipWeekends) {
+        while (isWeekend(targetDate)) {
+          targetDate = addDays(targetDate, 1);
+        }
       }
-    }
 
-    const dateStr = format(targetDate, "yyyy-MM-dd");
-    const used = await getMailboxUsageForDate(mailboxId, dateStr);
-    const scheduledAt = computeSendTime(
-      targetDate,
-      sendingWindowStart,
-      sendingWindowEnd,
-      used
-    );
+      // Follow-ups don't consume capacity slots — they're reply-thread emails
+      // and don't count against the daily new-email limit.
+      const dateStr = format(targetDate, "yyyy-MM-dd");
+      const used = await getMailboxUsageForDate(mailboxId, dateStr);
+      scheduledAt = computeSendTime(
+        targetDate,
+        sendingWindowStart,
+        sendingWindowEnd,
+        used
+      );
+    }
 
     await db.insert(sequenceSteps).values({
       sequenceId: sequence.id,
@@ -210,18 +235,49 @@ export async function getMailboxUsageForDate(
   mailboxId: string,
   dateStr: string
 ): Promise<number> {
-  // Count pending sequenceSteps for this mailbox on the given date
+  // Count ALL non-cancelled, non-failed steps (pending OR sent) for this mailbox on this date.
+  // Including "sent" prevents over-counting capacity that's already been consumed.
   const [result] = await db
     .select({ count: count() })
     .from(sequenceSteps)
     .where(
       and(
         eq(sequenceSteps.mailboxId, mailboxId),
-        eq(sequenceSteps.status, "pending"),
+        sql`${sequenceSteps.status} IN ('pending', 'sent')`,
         sql`DATE(${sequenceSteps.scheduledAt}) = ${dateStr}::date`
       )
     );
   return result?.count ?? 0;
+}
+
+/**
+ * Find the next business day on or after `from` that has capacity for the given mailbox.
+ * Returns both the date and the current slot index (usage count) for that day.
+ */
+export async function findNextAvailableSlot(
+  mailboxId: string,
+  dailyLimit: number,
+  from: Date,
+  skipWeekends: boolean
+): Promise<{ date: Date; slotIndex: number }> {
+  const candidate = new Date(from);
+  candidate.setHours(0, 0, 0, 0);
+
+  // Walk forward up to 60 days to find a slot with capacity
+  for (let i = 0; i < 60; i++) {
+    if (skipWeekends && isWeekend(candidate)) {
+      candidate.setDate(candidate.getDate() + 1);
+      continue;
+    }
+    const dateStr = format(candidate, "yyyy-MM-dd");
+    const used = await getMailboxUsageForDate(mailboxId, dateStr);
+    if (used < dailyLimit) {
+      return { date: new Date(candidate), slotIndex: used };
+    }
+    candidate.setDate(candidate.getDate() + 1);
+  }
+
+  throw new Error(`No available send slot found within 60 days for mailbox ${mailboxId}`);
 }
 
 export function computeSendTime(
@@ -237,12 +293,12 @@ export function computeSendTime(
   const windowEndMinutes = endH * 60 + endM;
   const windowDuration = windowEndMinutes - windowStartMinutes;
 
-  // Spread sends across window + add jitter (±2 minutes)
+  // Spread sends evenly across the window + small jitter (±2 min)
   const baseMinutes = windowStartMinutes + ((slotIndex * 7 + 3) % windowDuration);
   const jitter = Math.floor(Math.random() * 4) - 2;
   const finalMinutes = Math.max(
     windowStartMinutes,
-    Math.min(windowEndMinutes, baseMinutes + jitter)
+    Math.min(windowEndMinutes - 1, baseMinutes + jitter)
   );
 
   const result = new Date(date);
