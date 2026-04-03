@@ -105,11 +105,13 @@ export async function createSequence(
 
   // Pick mailbox
   let mailboxId: string;
+  let precomputedSlot: { date: Date; slotIndex: number } | null = null;
 
   if (options.mailboxId) {
     mailboxId = options.mailboxId;
   } else {
-    // Find first active mailbox with capacity today
+    // Find the mailbox with the earliest available slot across all active mailboxes.
+    // We pre-compute the slot here so step 1 doesn't need to re-query.
     const activeMailboxes = await db
       .select()
       .from(mailboxes)
@@ -119,21 +121,25 @@ export async function createSequence(
       throw new Error("No active mailboxes available");
     }
 
-    const today = format(new Date(), "yyyy-MM-dd");
-    let picked: string | null = null;
+    let earliest: { date: Date; slotIndex: number; mailboxId: string } | null = null;
 
     for (const mb of activeMailboxes) {
-      const used = await getMailboxUsageForDate(mb.id, today);
-      if (used < mb.dailyLimit) {
-        picked = mb.id;
-        break;
+      try {
+        const slot = await findNextAvailableSlot(mb.id, mb.dailyLimit, new Date(), skipWeekends);
+        if (!earliest || slot.date < earliest.date) {
+          earliest = { ...slot, mailboxId: mb.id };
+        }
+      } catch {
+        // No slots available within 60 days for this mailbox — skip it
       }
     }
 
-    if (!picked) {
-      throw new Error("No mailbox has capacity today");
+    if (!earliest) {
+      throw new Error("No mailbox has capacity within the next 60 days");
     }
-    mailboxId = picked;
+
+    mailboxId = earliest.mailboxId;
+    precomputedSlot = { date: earliest.date, slotIndex: earliest.slotIndex };
   }
 
   // Load mailbox for daily limit info
@@ -170,46 +176,90 @@ export async function createSequence(
   let step1Date: Date | null = null;
 
   for (const step of resolvedSteps) {
-    let scheduledAt: Date;
 
     if (step.stepNumber === 1) {
-      // Find the next available slot on or after today
-      const slot = await findNextAvailableSlot(
-        mailboxId,
-        mailbox.dailyLimit,
-        startDate,
-        skipWeekends
-      );
-      scheduledAt = computeSendTime(
-        slot.date,
-        sendingWindowStart,
-        sendingWindowEnd,
-        slot.slotIndex
-      );
-      step1Date = slot.date;
-    } else {
-      // Cascade from step 1's actual date, not the creation timestamp
-      if (!step1Date) throw new Error("step1Date not set before follow-up step");
+      // Wrap the slot claim + insert in a transaction to prevent race conditions:
+      // two concurrent createSequence calls could both read the same usage count
+      // and schedule into the same slot. The transaction serializes the read-then-write.
+      const result = await db.transaction(async (tx) => {
+        // Re-use precomputed slot from auto-mailbox selection, or find one now
+        const slot =
+          precomputedSlot ??
+          (await findNextAvailableSlot(
+            mailboxId,
+            mailbox.dailyLimit,
+            startDate,
+            skipWeekends
+          ));
 
-      let targetDate = addDays(step1Date, step.delayDays);
+        // Re-read usage inside the transaction to guard against a concurrent request
+        // claiming the same slot between our earlier check and this insert.
+        const dateStr = format(slot.date, "yyyy-MM-dd");
+        const [usage] = await tx
+          .select({ count: count() })
+          .from(sequenceSteps)
+          .where(
+            and(
+              eq(sequenceSteps.mailboxId, mailboxId),
+              sql`${sequenceSteps.status} IN ('pending', 'sent')`,
+              sql`DATE(${sequenceSteps.scheduledAt}) = ${dateStr}::date`
+            )
+          );
+        const currentUsage = usage?.count ?? 0;
 
-      if (skipWeekends) {
-        while (isWeekend(targetDate)) {
-          targetDate = addDays(targetDate, 1);
-        }
-      }
+        const scheduledAt = computeSendTime(
+          slot.date,
+          sendingWindowStart,
+          sendingWindowEnd,
+          currentUsage,
+          mailbox.dailyLimit
+        );
 
-      // Follow-ups don't consume capacity slots — they're reply-thread emails
-      // and don't count against the daily new-email limit.
-      const dateStr = format(targetDate, "yyyy-MM-dd");
-      const used = await getMailboxUsageForDate(mailboxId, dateStr);
-      scheduledAt = computeSendTime(
-        targetDate,
-        sendingWindowStart,
-        sendingWindowEnd,
-        used
-      );
+        await tx.insert(sequenceSteps).values({
+          sequenceId: sequence.id,
+          stepNumber: step.stepNumber,
+          subject: step.subject ?? null,
+          body: step.body,
+          delayDays: step.delayDays,
+          isReplyThread: step.isReplyThread,
+          ccRecipients: step.ccRecipients,
+          bccRecipients: step.bccRecipients,
+          mailboxId,
+          scheduledAt,
+          status: "pending",
+        });
+
+        return { scheduledAt, step1Date: slot.date };
+      });
+
+      step1Date = result.step1Date;
+      continue; // Already inserted inside the transaction
     }
+
+    // Follow-up steps (steps 2-N)
+    // Cascade from step 1's actual date, not the creation timestamp.
+    // Follow-ups carry lower cold-email risk but still consume Gmail quota.
+    // They are not slot-gated by dailyLimit, but will stack on downstream dates
+    // if many sequences share the same step-1 date — plan campaign volume accordingly.
+    if (!step1Date) throw new Error("step1Date not set before follow-up step");
+
+    let targetDate = addDays(step1Date, step.delayDays);
+
+    if (skipWeekends) {
+      while (isWeekend(targetDate)) {
+        targetDate = addDays(targetDate, 1);
+      }
+    }
+
+    const dateStr = format(targetDate, "yyyy-MM-dd");
+    const used = await getMailboxUsageForDate(mailboxId, dateStr);
+    const scheduledAt = computeSendTime(
+      targetDate,
+      sendingWindowStart,
+      sendingWindowEnd,
+      used,
+      mailbox.dailyLimit
+    );
 
     await db.insert(sequenceSteps).values({
       sequenceId: sequence.id,
@@ -284,7 +334,8 @@ export function computeSendTime(
   date: Date,
   windowStart: string,
   windowEnd: string,
-  slotIndex: number
+  slotIndex: number,
+  dailyLimit: number = 40
 ): Date {
   const [startH, startM] = windowStart.split(":").map(Number);
   const [endH, endM] = windowEnd.split(":").map(Number);
@@ -293,8 +344,12 @@ export function computeSendTime(
   const windowEndMinutes = endH * 60 + endM;
   const windowDuration = windowEndMinutes - windowStartMinutes;
 
-  // Spread sends evenly across the window + small jitter (±2 min)
-  const baseMinutes = windowStartMinutes + ((slotIndex * 7 + 3) % windowDuration);
+  // Spread sends uniformly across the window based on slot position within dailyLimit.
+  // Using slotIndex/dailyLimit gives an even distribution instead of the old *7 hash
+  // which clustered sends and could collide at low volumes.
+  const baseMinutes =
+    windowStartMinutes +
+    Math.round((slotIndex / Math.max(dailyLimit, 1)) * windowDuration);
   const jitter = Math.floor(Math.random() * 4) - 2;
   const finalMinutes = Math.max(
     windowStartMinutes,
