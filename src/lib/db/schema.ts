@@ -259,6 +259,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
     .notNull()
     .references(() => workspaces.id)
     .unique(),
+  sendingEnabled: boolean("sending_enabled").default(true).notNull(),
   trackingDomain: text("tracking_domain"),
   trackingDomainVerified: boolean("tracking_domain_verified").default(false).notNull(),
   openTrackingEnabled: boolean("open_tracking_enabled").default(true).notNull(),

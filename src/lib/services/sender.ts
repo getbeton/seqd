@@ -5,9 +5,11 @@ import {
   emailsSent,
   contacts,
   mailboxes,
+  campaigns,
   workspaceSettings,
 } from "@/lib/db/schema";
 import { eq, and, lte, sql, count } from "drizzle-orm";
+import { format } from "date-fns";
 import { getGmailService } from "@/lib/gmail/client";
 import { sendGmailMessage } from "@/lib/gmail/send";
 import { injectTrackingPixel, buildUnsubscribeFooter } from "@/lib/tracking/pixel";
@@ -68,22 +70,60 @@ async function getTrackingBaseUrl(workspaceId: string): Promise<{
 export async function runSendCycle(dryRun = false): Promise<SendResult> {
   const result: SendResult = { sent: 0, failed: 0, skipped: 0, details: [] };
 
-  // Get all pending sequence steps that are due
+  // ── BUG-5 FIX: Global kill switch ──────────────────────────────────────────
+  // Check workspace-level sendingEnabled before processing anything.
+  // If ANY workspace has sending disabled, skip all steps for that workspace.
+  const allSettings = await db.select().from(workspaceSettings);
+  const disabledWorkspaces = new Set(
+    allSettings
+      .filter((s) => s.sendingEnabled === false)
+      .map((s) => s.workspaceId)
+  );
+
+  // ── BUG-2 FIX: Daily mailbox limit enforcement ────────────────────────────
+  // Pre-load today's sent counts per mailbox to enforce limits at send time.
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const sentToday = await db
+    .select({
+      mailboxId: emailsSent.mailboxId,
+      count: count(),
+    })
+    .from(emailsSent)
+    .where(
+      and(
+        eq(emailsSent.status, "sent"),
+        sql`DATE(${emailsSent.sentAt}) = ${todayStr}::date`
+      )
+    )
+    .groupBy(emailsSent.mailboxId);
+
+  const mailboxSentCounts = new Map<string, number>(
+    sentToday.map((r) => [r.mailboxId, r.count])
+  );
+
+  // Load mailbox limits
+  const allMailboxes = await db.select().from(mailboxes);
+  const mailboxLimits = new Map<string, number>(
+    allMailboxes.map((m) => [m.id, m.dailyLimit])
+  );
+
+  // ── BUG-1 FIX: JOIN campaigns to check campaign status ────────────────────
   const dueSteps = await db
     .select({
       seqStep: sequenceSteps,
       sequence: sequences,
       contact: contacts,
       mailbox: mailboxes,
+      campaign: campaigns,
     })
     .from(sequenceSteps)
     .innerJoin(sequences, eq(sequenceSteps.sequenceId, sequences.id))
     .innerJoin(contacts, eq(sequences.contactId, contacts.id))
     .innerJoin(mailboxes, eq(
-      // step-level mailbox overrides sequence-level; fall back to sequence mailbox
       sql`coalesce(${sequenceSteps.mailboxId}, ${sequences.mailboxId})`,
       mailboxes.id
     ))
+    .leftJoin(campaigns, eq(sequences.campaignId, campaigns.id))
     .where(
       and(
         eq(sequenceSteps.status, "pending"),
@@ -93,7 +133,33 @@ export async function runSendCycle(dryRun = false): Promise<SendResult> {
     .orderBy(sequenceSteps.scheduledAt);
 
   for (const row of dueSteps) {
-    const { seqStep, sequence, contact, mailbox } = row;
+    const { seqStep, sequence, contact, mailbox, campaign } = row;
+
+    // ── BUG-5 FIX: Skip if workspace sending is disabled ─────────────────
+    if (disabledWorkspaces.has(sequence.workspaceId)) {
+      result.skipped++;
+      result.details.push({
+        sequenceId: sequence.id,
+        contactEmail: contact.email,
+        stepNumber: seqStep.stepNumber,
+        status: "skipped",
+        error: "workspace sending disabled",
+      });
+      continue;
+    }
+
+    // ── BUG-1 FIX: Skip if campaign is not active ────────────────────────
+    if (campaign && campaign.status !== "active") {
+      result.skipped++;
+      result.details.push({
+        sequenceId: sequence.id,
+        contactEmail: contact.email,
+        stepNumber: seqStep.stepNumber,
+        status: "skipped",
+        error: `campaign status is ${campaign.status}`,
+      });
+      continue;
+    }
 
     // Skip if sequence is paused/finished/failed
     if (["paused", "finished", "failed"].includes(sequence.status)) {
@@ -117,6 +183,21 @@ export async function runSendCycle(dryRun = false): Promise<SendResult> {
         stepNumber: seqStep.stepNumber,
         status: "skipped",
         error: `contact status is ${contact.status}`,
+      });
+      continue;
+    }
+
+    // ── BUG-2 FIX: Skip if mailbox daily limit reached ──────────────────
+    const sentCount = mailboxSentCounts.get(mailbox.id) ?? 0;
+    const limit = mailboxLimits.get(mailbox.id) ?? 40;
+    if (sentCount >= limit) {
+      result.skipped++;
+      result.details.push({
+        sequenceId: sequence.id,
+        contactEmail: contact.email,
+        stepNumber: seqStep.stepNumber,
+        status: "skipped",
+        error: `mailbox ${mailbox.email} daily limit reached (${sentCount}/${limit})`,
       });
       continue;
     }
@@ -268,6 +349,9 @@ export async function runSendCycle(dryRun = false): Promise<SendResult> {
             .where(eq(sequences.id, sequence.id));
         }
       }
+
+      // BUG-2 FIX: Increment running mailbox count
+      mailboxSentCounts.set(mailbox.id, (mailboxSentCounts.get(mailbox.id) ?? 0) + 1);
 
       result.sent++;
       result.details.push({

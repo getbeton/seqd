@@ -5,6 +5,7 @@ import {
   templateSteps,
   contacts,
   mailboxes,
+  campaigns,
 } from "@/lib/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import { addDays, isWeekend, format } from "date-fns";
@@ -46,6 +47,40 @@ export async function createSequence(
   }
   if (contact.status !== "active") {
     throw new Error(`Contact is not active (status: ${contact.status})`);
+  }
+
+  // BUG-4 FIX: Cross-campaign dedup — reject if contact already has an active sequence
+  const [existingActive] = await db
+    .select({ id: sequences.id, campaignId: sequences.campaignId })
+    .from(sequences)
+    .where(
+      and(
+        eq(sequences.contactId, contactId),
+        eq(sequences.workspaceId, workspaceId),
+        sql`${sequences.status} IN ('active', 'not_sent')`
+      )
+    )
+    .limit(1);
+
+  if (existingActive) {
+    throw new Error(
+      `Contact already has an active sequence (${existingActive.id}). ` +
+      `Pause or finish the existing sequence before creating a new one.`
+    );
+  }
+
+  // BUG-6 FIX: Respect campaign status — don't create active sequences in paused campaigns
+  let initialStatus: "active" | "paused" = "active";
+  if (options.campaignId) {
+    const [campaign] = await db
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, options.campaignId))
+      .limit(1);
+
+    if (campaign && campaign.status !== "active") {
+      initialStatus = "paused";
+    }
   }
 
   // Resolve steps
@@ -146,7 +181,7 @@ export async function createSequence(
     throw new Error("Mailbox not found");
   }
 
-  // Create sequence row
+  // Create sequence row (BUG-6 FIX: use initialStatus based on campaign state)
   const [sequence] = await db
     .insert(sequences)
     .values({
@@ -155,7 +190,7 @@ export async function createSequence(
       campaignId: options.campaignId ?? null,
       templateId: options.templateId ?? null,
       mailboxId,
-      status: "active",
+      status: initialStatus,
       sendingWindowStart,
       sendingWindowEnd,
       timezone,
