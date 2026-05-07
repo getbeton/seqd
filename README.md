@@ -79,3 +79,17 @@ Starts: PostgreSQL, Redis, Next.js app, and cron scheduler.
 ## License
 
 [GNU Affero General Public License v3.0](LICENSE)
+
+
+---
+
+## About
+
+`seqd` is part of [Beton](https://www.getbeton.ai/), open-source revenue intelligence. Other open-source tools we maintain:
+
+- [Inspector](https://www.getbeton.ai/) — the flagship signal-discovery agent
+- [DryFit](https://www.getbeton.ai/oss-tools/dryfit/) — synthetic analytics datasets for agent benchmarking
+- [openclaw-gtm-skills](https://www.getbeton.ai/oss-tools/openclaw-gtm-skills/) — company research pipeline for OpenClaw
+
+Browse [all open-source tools by Beton →](https://www.getbeton.ai/oss-tools/)
+
