@@ -1,5 +1,9 @@
 # seqd — Personal Email Sequencer
 
+> [!WARNING]
+> This repository is archived and read-only. The last Beton code is in [getbeton/inspector](https://github.com/getbeton/inspector). Beton is not in active development.
+> The team now builds [Sell to State](https://www.selltostate.com/?utm_source=github&utm_medium=referral&utm_campaign=beton-repos&utm_content=seqd): government tenders and contract awards from official sources in 70+ countries.
+
 Self-hosted, open-source email sequencer for personal and small-team cold outbound. Replaces Apollo/Instantly/Smartlead.
 
 ## Quick Start
@@ -85,11 +89,11 @@ Starts: PostgreSQL, Redis, Next.js app, and cron scheduler.
 
 ## About
 
-`seqd` is part of [Beton](https://www.getbeton.ai/), open-source revenue intelligence. Other open-source tools we maintain:
+`seqd` is part of [Beton](https://github.com/getbeton), open-source revenue intelligence. Other open-source tools we maintain:
 
-- [Inspector](https://www.getbeton.ai/) — the flagship signal-discovery agent
-- [DryFit](https://www.getbeton.ai/oss-tools/dryfit/) — synthetic analytics datasets for agent benchmarking
-- [openclaw-gtm-skills](https://www.getbeton.ai/oss-tools/openclaw-gtm-skills/) — company research pipeline for OpenClaw
+- [Inspector](https://github.com/getbeton/inspector) — the flagship signal-discovery agent
+- [DryFit](https://github.com/getbeton/dryfit) — synthetic analytics datasets for agent benchmarking
+- [openclaw-gtm-skills](https://github.com/getbeton/openclaw-gtm-skills) — company research pipeline for OpenClaw
 
-Browse [all open-source tools by Beton →](https://www.getbeton.ai/oss-tools/)
+Browse [all open-source tools by Beton →](https://github.com/getbeton)
 
